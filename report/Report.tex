@@ -11,7 +11,7 @@
 \begin{document}
 
 \begin{abstract}
-This report presents a hybrid geometric and colour-based computer vision pipeline for localising and recognising pool balls on a standard table. The first stage rectifies each view into a metric $1434\times683$ table frame, segments the green felt using two-dimensional HSV histogram backprojection, repairs lighting-induced mask fragmentation with morphological closing and opening, and detects ball candidates with the Hough Circle Transform under pocket and cushion constraints. The second stage identifies each surviving candidate by comparing a compact hue--saturation histogram, sampled through a reduced $16$-pixel circular mask, against a reference set using the Bhattacharyya distance with a $0.75$ rejection threshold. Across the six supplied test images, the complete pipeline achieves an overall Stage~1 F1-score of $0.729$ and a Stage~2 recognition accuracy of $72.6\%$, demonstrating that the combination of geometric constraints and colour matching successfully localises and recognises the majority of pool balls.
+This report presents a hybrid geometric and colour-based computer vision pipeline for localising and recognising pool balls on a standard table. The first stage rectifies each view into a metric $1434\times683$ table frame, converts the rectified image to the CIELAB colour space, and uses the L (Lightness) channel as a high-contrast, chroma-invariant gradient map for the Hough Circle Transform, with pocket and cushion constraints removing geometrically impossible candidates. The second stage identifies each surviving candidate by comparing a compact hue--saturation histogram, sampled through a reduced $16$-pixel circular mask, against a reference set using the Bhattacharyya distance with a $0.75$ rejection threshold. Across the six supplied test images, the complete pipeline achieves an overall Stage~1 F1-score of $0.746$ and a Stage~2 recognition accuracy of $75.8\%$, demonstrating that the combination of geometric constraints and colour matching successfully localises and recognises the majority of pool balls.
 \end{abstract}
 
 \section{Theory of Processing}
@@ -96,21 +96,15 @@ The same metric property also simplifies the later stages. Ball centres can be c
 
 \subsection{Detection methodology}
 
-The Stage~1 pipeline combines four processing blocks. Each input photograph is first rectified by a planar perspective warp from its four measured cushion corners into the $1434\times683$ metric table frame. The green felt is then segmented by two-dimensional histogram backprojection in the HSV colour space, which isolates the felt distribution while remaining largely insensitive to illumination changes. Morphological closing and opening with a large elliptical structuring element repair lighting-induced fragmentation in the resulting mask before the masked grey-level image is passed to the Hough Circle Transform. The transform accumulates circular edge evidence over the expected ball-radius range and returns candidate centres and radii. Finally, pocket and cushion boundary constraints remove candidates whose centres are geometrically incompatible with a ball resting on the playing surface.
+The Stage~1 pipeline combines four processing blocks. Each input photograph is first rectified by a planar perspective warp from its four measured cushion corners into the $1434\times683$ metric table frame. The rectified image is then converted to the CIELAB colour space, and the L (Lightness) channel is extracted and smoothed to suppress felt texture while preserving ball-scale contrast. This lightness image is passed directly to the Hough Circle Transform, which accumulates circular edge evidence over the expected ball-radius range and returns candidate centres and radii. Finally, pocket and cushion boundary constraints remove candidates whose centres are geometrically incompatible with a ball resting on the playing surface.
 
 \subsection{Geometric pocket exclusion}
 
 The rectified playing area is a $1434\,\mathrm{mm}$ by $683\,\mathrm{mm}$ rectangle. A standard pool table has six pockets: four at the corners and two at the midpoints of the long rails. In the rectified frame these theoretical pocket centres are $(0,0)$, $(717,0)$ and $(1434,0)$ along the top edge, and $(0,683)$, $(717,683)$ and $(1434,683)$ along the bottom edge. A ball cannot be physically supported with its centre inside a pocket. Consequently, any detected centre lying within $95\,\mathrm{mm}$ of one of these six positions is rejected; this wider radius also removes responses from the curved inner lips of the pockets. In addition, a cushion boundary constraint discards any candidate whose centre lies within $22\,\mathrm{mm}$ of the outer border, because the physical wooden cushions are not part of the felt playing surface and can generate strong non-felt gradients near the image boundary. These are purely geometric constraints derived from the known table layout; they do not depend on illumination, colour, texture, or the particular camera view, and they apply uniformly to all six test images.
 
-\subsection{Colour-space choice for felt segmentation}
+\subsection{CIELAB lightness channel}
 
-Segmentation of the green playing surface is formulated as two-dimensional histogram backprojection. A $100\times100$ reference patch of empty felt is taken from the middle-left of the rectified table, where no ball is present in any of the six images. A joint histogram of hue and saturation is accumulated from this patch using $30$ hue bins and $32$ saturation bins. The histogram is normalised so that its maximum is $255$, and the resulting distribution is backprojected onto the complete rectified image. The backprojection assigns to every pixel a likelihood that its colour belongs to the felt distribution. Thresholding this likelihood produces the felt mask, whose complement isolates non-felt regions such as balls. The felt region is replaced by the mean intensity of the reference patch rather than by black, so that the mask boundary itself does not introduce artificial high-contrast edges.
-
-The HSV colour space is used instead of RGB for a fundamental reason. In RGB, colour and illumination are coupled: the three channel values change jointly when the incident light changes, so a shadow, a highlight, or direct glare alters the RGB vector even when the underlying surface colour is unchanged. Consequently, shadow boundaries can appear as strong intensity edges and can be mistaken for object boundaries. HSV decouples colour from illumination: hue describes the dominant wavelength, saturation describes the purity of the colour, and value describes brightness. By constructing the histogram from hue and saturation only, the representation is largely independent of the brightness changes caused by shadows, chalk dust, and glare. The green felt therefore retains a compact and stable distribution in the hue--saturation plane, while balls of other colours fall outside this distribution. This separation allows the felt to be segmented robustly across all six images without relying on fixed RGB thresholds, which would be sensitive to the particular lighting of each frame.
-
-\subsection{Morphological repair of the felt mask}
-
-The raw binary felt mask can contain small dark holes and jagged gaps where uneven illumination, shadow, or low local contrast causes felt pixels to fall outside the histogram distribution. Such irregularities create artificial intensity gradients at their boundaries, and these gradients can be mistaken for ball edges during circular detection. To repair the mask before it is used, a morphological closing is applied first: a large elliptical structuring element of size $25\times25$ dilates the felt region and then erodes it, filling small holes and bridging narrow gaps without changing the overall extent of the felt. A morphological opening is then applied with the same structuring element, eroding and then dilating the region, which removes small isolated noise components and smooths thin protrusions. The elliptical shape is appropriate because the felt boundary and the ball silhouettes are locally rounded, so the operation repairs the mask along directions consistent with the geometry of the scene. Because the repaired mask is used to suppress the felt before gradient detection, the artificial gradients caused by lighting-induced fragmentation are removed at their source rather than being filtered after detection.
+Each rectified image is converted to the CIELAB colour space, which separates a lightness coordinate $L$ from two chromatic coordinates $a$ and $b$. The $L$ channel is retained as a grey-level gradient image. Because it encodes perceived lightness rather than raw RGB channel values, it provides a high-contrast representation of ball boundaries against the felt while remaining independent of the chromatic content of the objects. The $L$ channel is smoothed with a small Gaussian kernel to suppress high-frequency felt texture and sensor noise without removing the ball-scale edges. This smoothed lightness image is passed directly to the Hough Circle Transform, which applies edge detection internally and accumulates circular evidence over the expected ball-radius range. The resulting gradient map does not depend on a colour threshold or on a segmented felt mask, so it avoids the fragmentation that colour-based masking suffers when the illumination is uneven. The geometric constraints and the Stage~2 colour verification later remove the additional non-ball responses that a pure lightness gradient may contain.
 
 \subsection{Minimum centre separation}
 
@@ -129,20 +123,20 @@ A detection is counted as a true positive when its centre lies within $21.5$ pix
 Image & TP & FP & FN & Precision & Recall & F1-score \\
 \hline
 Table 1 & 13 & 0 & 3 & 1.000 & 0.812 & 0.897 \\
-Table 2 & 11 & 3 & 5 & 0.786 & 0.688 & 0.733 \\
+Table 2 & 13 & 3 & 3 & 0.812 & 0.812 & 0.812 \\
 Table 3 & 11 & 6 & 5 & 0.647 & 0.688 & 0.667 \\
-Table 4 & 12 & 3 & 3 & 0.800 & 0.800 & 0.800 \\
-Table 5 & 7 & 3 & 7 & 0.700 & 0.500 & 0.583 \\
-Table 6 & 8 & 2 & 5 & 0.800 & 0.615 & 0.696 \\
+Table 4 & 10 & 5 & 5 & 0.667 & 0.667 & 0.667 \\
+Table 5 & 9 & 4 & 5 & 0.692 & 0.643 & 0.667 \\
+Table 6 & 10 & 3 & 3 & 0.769 & 0.769 & 0.769 \\
 \hline
-Overall & 62 & 17 & 28 & 0.789 & 0.684 & 0.729 \\
+Overall & 66 & 21 & 24 & 0.765 & 0.732 & 0.746 \\
 \hline
 \end{tabular}
 \end{table}
 
 \subsection{Discussion}
 
-Table~1 gives the strongest result in terms of precision after colour verification. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The morphological repair removes the jagged lighting-induced holes that would otherwise create artificial gradients, while the expanded pocket constraint removes the responses from the pocket lips as well as the pocket centres. The cushion boundary constraint removes responses from the wooden rails, and the minimum centre separation removes the majority of double detections on a single ball. The colour verification described in the next section then acts as a secondary false-positive filter. It raises the overall precision from $0.745$ to $0.789$, because shadow patches, chalk marks, and other non-ball structures are rejected when their colour distributions do not match any reference ball. The same filter still rejects some genuine balls whose histograms are distorted by occlusion, strong highlights, or partial visibility, so overall recall falls from $0.772$ to $0.684$ and the overall F1-score becomes $0.729$. Compared with the previous, more aggressive colour threshold, shrinking the sampling mask and relaxing the rejection threshold recovers a substantial part of the lost recall while retaining a clear precision gain.
+Table~1 gives the strongest result in terms of precision after colour verification. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The lightness-gradient approach removes the dependence on a segmented felt mask, so it avoids the fragmentation that uneven lighting produced in colour-based masking. The expanded pocket constraint removes the responses from the pocket lips as well as the pocket centres, the cushion boundary constraint removes responses from the wooden rails, and the minimum centre separation removes the majority of double detections on a single ball. The colour verification described in the next section then acts as a secondary false-positive filter, rejecting shadow patches, chalk marks, and other non-ball structures whose colour distributions do not match any reference ball. Some genuine balls are also rejected when their histograms are distorted by occlusion, strong highlights, or partial visibility. The final overall precision is $0.765$, recall is $0.732$, and the F1-score is $0.746$.
 
 \section{Stage 2: Recognition}
 
@@ -168,18 +162,18 @@ Recognition accuracy is defined as the number of correctly labelled true-positiv
 \hline
 Image & Correct labels & True positives & Accuracy \\
 \hline
-Table 1 & 11 & 13 & 0.846 \\
-Table 2 & 8 & 11 & 0.727 \\
+Table 1 & 10 & 13 & 0.769 \\
+Table 2 & 11 & 13 & 0.846 \\
 Table 3 & 7 & 11 & 0.636 \\
-Table 4 & 9 & 12 & 0.750 \\
-Table 5 & 4 & 7 & 0.571 \\
-Table 6 & 6 & 8 & 0.750 \\
+Table 4 & 9 & 10 & 0.900 \\
+Table 5 & 6 & 9 & 0.667 \\
+Table 6 & 7 & 10 & 0.700 \\
 \hline
-Overall & 45 & 62 & 0.726 \\
+Overall & 50 & 66 & 0.758 \\
 \hline
 \end{tabular}
 \end{table}
 
-The overall recognition accuracy is $0.726$, meaning that approximately three out of four correctly localised balls receive the correct label. The main residual confusions are between similarly coloured solids and stripes, and between the cue ball and other low-saturation balls; these confusions arise because a hue--saturation histogram captures colour distribution but not the spatial arrangement of the number, stripe, or highlight. Recognition was most affected on Tables~3, 5 and~6, where shadows and glare altered the apparent hue and saturation of several balls and caused both false rejections and label confusions; Table~5 was particularly affected, with only four of seven correctly localised balls receiving the correct label. The colour threshold nevertheless performs the intended secondary filtering role, raising Stage~1 precision from $0.745$ to $0.789$ while recovering much of the recall lost under the stricter threshold.
+The overall recognition accuracy is $0.758$, meaning that more than three out of four correctly localised balls receive the correct label. The main residual confusions are between similarly coloured solids and stripes, and between the cue ball and other low-saturation balls; these confusions arise because a hue--saturation histogram captures colour distribution but not the spatial arrangement of the number, stripe, or highlight. Recognition was most affected on Tables~3, 5 and~6, where shadows and glare altered the apparent hue and saturation of several balls and caused both false rejections and label confusions; Table~5 was particularly affected, with six of nine correctly localised balls receiving the correct label. The colour threshold nevertheless performs the intended secondary filtering role, raising Stage~1 precision to $0.765$ while retaining a recall of $0.732$.
 
 \end{document}

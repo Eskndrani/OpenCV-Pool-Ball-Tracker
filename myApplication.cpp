@@ -419,70 +419,18 @@ void MyApplication()
 
         const std::string imageBase = imageName.substr(0, imageName.find_last_of('.'));
 
-        cv::Mat grayImage;
-        cv::cvtColor(warpedImage, grayImage, cv::COLOR_BGR2GRAY);
-
-        cv::Mat cannyEdges;
-        cv::Canny(grayImage, cannyEdges, 100, 200);
-
         cv::Mat hsvImage;
         cv::cvtColor(warpedImage, hsvImage, cv::COLOR_BGR2HSV);
 
-        const cv::Rect feltRoiRect(200, 200, 100, 100);
-        const cv::Mat feltRoi = hsvImage(feltRoiRect);
+        cv::Mat labImage;
+        cv::cvtColor(warpedImage, labImage, cv::COLOR_BGR2Lab);
 
-        int histogramSize[] = {30, 32};
-        float hueRange[] = {0, 180};
-        float saturationRange[] = {0, 256};
-        const float* histogramRanges[] = {hueRange, saturationRange};
-        int histogramChannels[] = {0, 1};
-
-        cv::Mat feltHistogram;
-        cv::calcHist(
-            &feltRoi,
-            1,
-            histogramChannels,
-            cv::Mat(),
-            feltHistogram,
-            2,
-            histogramSize,
-            histogramRanges,
-            true,
-            false
-        );
-        cv::normalize(feltHistogram, feltHistogram, 0, 255, cv::NORM_MINMAX);
-
-        cv::Mat backProjection;
-        cv::calcBackProject(
-            &hsvImage,
-            1,
-            histogramChannels,
-            feltHistogram,
-            backProjection,
-            histogramRanges,
-            1.0,
-            true
-        );
-
-        cv::Mat feltMask;
-        cv::threshold(backProjection, feltMask, 50, 255, cv::THRESH_BINARY);
-
-        cv::Mat tableMask;
-        cv::bitwise_not(feltMask, tableMask);
-
-        const cv::Mat morphologyKernel =
-            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(25, 25));
-        cv::morphologyEx(tableMask, tableMask, cv::MORPH_CLOSE, morphologyKernel);
-        cv::morphologyEx(tableMask, tableMask, cv::MORPH_OPEN, morphologyKernel);
-        cv::bitwise_not(tableMask, feltMask);
-
-        cv::Mat maskedGray;
-        cv::bitwise_and(grayImage, tableMask, maskedGray);
-        const double meanFeltValue = cv::mean(grayImage(feltRoiRect))[0];
-        maskedGray.setTo(cv::Scalar(meanFeltValue), feltMask);
+        std::vector<cv::Mat> labChannels;
+        cv::split(labImage, labChannels);
+        const cv::Mat lChannel = labChannels[0];
 
         cv::Mat blurredImage;
-        cv::GaussianBlur(maskedGray, blurredImage, cv::Size(5, 5), 1.5);
+        cv::GaussianBlur(lChannel, blurredImage, cv::Size(5, 5), 1.5);
 
         std::vector<cv::Vec3f> houghCircles;
         cv::HoughCircles(
@@ -590,11 +538,9 @@ void MyApplication()
         totalCorrectLabels += metrics.correctLabels;
         ++imageCount;
 
-        cv::imwrite("results/" + imageBase + "_1_mask.jpeg", tableMask);
-        cv::imwrite("results/" + imageBase + "_2_masked_gray.jpeg", maskedGray);
-        cv::imwrite("results/" + imageBase + "_3_colored_answers.jpeg", detectionImage);
-        cv::imwrite("results/" + imageBase + "_mask.jpeg", feltMask);
         cv::imwrite("results/" + imageBase + "_edges.jpeg", blurredImage);
+        cv::imwrite("results/" + imageBase + "_l_channel.jpeg", blurredImage);
+        cv::imwrite("results/" + imageBase + "_3_colored_answers.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_labeled.jpeg", detectionImage);
     }
