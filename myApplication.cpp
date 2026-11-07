@@ -205,8 +205,58 @@ void MyApplication()
         cv::Mat cannyEdges;
         cv::Canny(grayImage, cannyEdges, 100, 200);
 
+        cv::Mat hsvImage;
+        cv::cvtColor(warpedImage, hsvImage, cv::COLOR_BGR2HSV);
+
+        const cv::Rect feltRoiRect(200, 200, 100, 100);
+        const cv::Mat feltRoi = hsvImage(feltRoiRect);
+
+        int histogramSize[] = {30, 32};
+        float hueRange[] = {0, 180};
+        float saturationRange[] = {0, 256};
+        const float* histogramRanges[] = {hueRange, saturationRange};
+        int histogramChannels[] = {0, 1};
+
+        cv::Mat feltHistogram;
+        cv::calcHist(
+            &feltRoi,
+            1,
+            histogramChannels,
+            cv::Mat(),
+            feltHistogram,
+            2,
+            histogramSize,
+            histogramRanges,
+            true,
+            false
+        );
+        cv::normalize(feltHistogram, feltHistogram, 0, 255, cv::NORM_MINMAX);
+
+        cv::Mat backProjection;
+        cv::calcBackProject(
+            &hsvImage,
+            1,
+            histogramChannels,
+            feltHistogram,
+            backProjection,
+            histogramRanges,
+            1.0,
+            true
+        );
+
+        cv::Mat feltMask;
+        cv::threshold(backProjection, feltMask, 50, 255, cv::THRESH_BINARY);
+
+        cv::Mat tableMask;
+        cv::bitwise_not(feltMask, tableMask);
+
+        cv::Mat maskedGray;
+        cv::bitwise_and(grayImage, tableMask, maskedGray);
+        const double meanFeltValue = cv::mean(grayImage(feltRoiRect))[0];
+        maskedGray.setTo(cv::Scalar(meanFeltValue), feltMask);
+
         cv::Mat blurredImage;
-        cv::GaussianBlur(grayImage, blurredImage, cv::Size(5, 5), 1.5);
+        cv::GaussianBlur(maskedGray, blurredImage, cv::Size(5, 5), 1.5);
 
         std::vector<cv::Vec3f> houghCircles;
         cv::HoughCircles(
@@ -214,7 +264,7 @@ void MyApplication()
             houghCircles,
             cv::HOUGH_GRADIENT,
             1.0,
-            41.0,
+            38.0,
             80.0,
             9.0,
             19,
