@@ -1,0 +1,14 @@
+/build/
+/results/generated/
+*.user
+*.suo
+*.obj
+*.o
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.log
+__pycache__/
+.venv/
+
