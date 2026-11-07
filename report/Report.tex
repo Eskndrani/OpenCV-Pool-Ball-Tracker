@@ -88,4 +88,42 @@ This fixed scale greatly simplifies the detection stage. A detector no longer ne
 
 The same metric property also simplifies the later stages. Ball centres can be compared with the supplied ground-truth locations directly in table coordinates, since the transformed pixel coordinates are also millimetre coordinates. Localisation error can be reported in millimetres without an additional conversion, and a matching tolerance can be stated as a physical distance. Recognition is likewise easier because every detected ball can be extracted at a consistent physical scale, so a fixed-size normalisation does not distort balls that were originally nearer or farther from the camera. In short, the $1434\times683$ destination is not merely a convenient image size: it is the choice that turns the rectified photograph into a metric map of the table, and that metric map is what makes robust, scale-invariant ball detection possible.
 
+\section{Stage 1: Detection Evaluation}
+
+\subsection{Geometric pocket exclusion}
+
+The rectified playing area is a $1434\,\mathrm{mm}$ by $683\,\mathrm{mm}$ rectangle. A standard pool table has six pockets: four at the corners and two at the midpoints of the long rails. In the rectified frame these theoretical pocket centres are $(0,0)$, $(717,0)$ and $(1434,0)$ along the top edge, and $(0,683)$, $(717,683)$ and $(1434,683)$ along the bottom edge. A ball cannot be physically supported with its centre inside a pocket. Consequently, any detected centre lying within $60\,\mathrm{mm}$ of one of these six positions is rejected. This is a purely geometric constraint derived from the known table layout; it does not depend on illumination, colour, texture, or the particular camera view, and it applies uniformly to all six test images.
+
+\subsection{Minimum centre separation}
+
+Because the rectified image has a scale of one pixel per millimetre, the $43\,\mathrm{mm}$ ball diameter corresponds to $43$ pixels. Two distinct ball centres therefore cannot be closer than approximately $43$ pixels. A minimum permitted centre separation of $41$ pixels is imposed during detection. This value is slightly below the physical diameter so that minor centre-estimation and discretisation errors do not reject legitimate balls, while still preventing two detections from being assigned to the same physical ball. The constraint suppresses overlapping responses on a single ball without merging genuinely adjacent balls in a tightly packed rack.
+
+\subsection{Ground-truth matching and metrics}
+
+A detection is counted as a true positive when its centre lies within $21.5$ pixels of an unmatched ground-truth centre; this tolerance is equal to the physical ball radius. Each ground-truth ball may be matched at most once. A detection that remains unmatched is a false positive, and a ground-truth centre that remains unmatched is a false negative. Precision is the ratio of true positives to all detections, recall is the ratio of true positives to all ground-truth balls, and the F1-score is the harmonic mean of precision and recall. Table~\ref{tab:stage1_metrics} reports these quantities for each test image and the macro-averaged result across all six images.
+
+\begin{table}[htbp]
+\centering
+\caption{Stage 1 detection metrics for the six supplied table images. The final row gives the macro-averaged precision, recall and F1-score, together with the total true-positive, false-positive and false-negative counts.}
+\label{tab:stage1_metrics}
+\begin{tabular}{lcccccc}
+\hline
+Image & TP & FP & FN & Precision & Recall & F1-score \\
+\hline
+Table 1 & 15 & 3 & 1 & 0.833 & 0.938 & 0.882 \\
+Table 2 & 13 & 7 & 3 & 0.650 & 0.812 & 0.722 \\
+Table 3 & 13 & 10 & 3 & 0.565 & 0.812 & 0.667 \\
+Table 4 & 13 & 6 & 2 & 0.684 & 0.867 & 0.765 \\
+Table 5 & 11 & 6 & 3 & 0.647 & 0.786 & 0.710 \\
+Table 6 & 9 & 6 & 4 & 0.600 & 0.692 & 0.643 \\
+\hline
+Overall & 74 & 38 & 16 & 0.663 & 0.818 & 0.731 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Discussion}
+
+Table~1 gives the strongest result, with an F1-score of $0.882$. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The theoretical pocket constraint removes most responses caused by pockets and cushion hardware, while the minimum centre separation removes the majority of double detections on a single ball. Residual false positives are mainly near-ball responses that survive both constraints, and residual false negatives occur where a ball is strongly overlapped or only partially visible. The overall recall of $0.818$ shows that most balls are found across the six images, while the overall precision of $0.663$ and F1-score of $0.731$ quantify the remaining cost of those false positives and missed detections. These results provide the baseline against which any later recognition stage can be evaluated.
+
 \end{document}
