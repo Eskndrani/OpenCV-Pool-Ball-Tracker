@@ -11,7 +11,7 @@
 \begin{document}
 
 \begin{abstract}
-This report presents a hybrid geometric and colour-based computer vision pipeline for localising and recognising pool balls on a standard table. The first stage rectifies each view into a metric $1434\times683$ table frame, segments the green felt using two-dimensional HSV histogram backprojection, repairs lighting-induced mask fragmentation with morphological closing and opening, and detects ball candidates with the Hough Circle Transform under pocket and cushion constraints. The second stage identifies each surviving candidate by comparing a compact hue--saturation histogram, sampled through a reduced $16$-pixel circular mask, against a reference set using the Bhattacharyya distance with a $0.75$ rejection threshold. Across the six supplied test images, the complete pipeline achieves an overall Stage~1 F1-score of $0.729$ and a Stage~2 recognition accuracy of $74.2\%$, demonstrating that the combination of geometric constraints and colour matching successfully localises and recognises the majority of pool balls.
+This report presents a hybrid geometric and colour-based computer vision pipeline for localising and recognising pool balls on a standard table. The first stage rectifies each view into a metric $1434\times683$ table frame, segments the green felt using two-dimensional HSV histogram backprojection, repairs lighting-induced mask fragmentation with morphological closing and opening, and detects ball candidates with the Hough Circle Transform under pocket and cushion constraints. The second stage identifies each surviving candidate by comparing a compact hue--saturation histogram, sampled through a reduced $16$-pixel circular mask, against a reference set using the Bhattacharyya distance with a $0.75$ rejection threshold. Across the six supplied test images, the complete pipeline achieves an overall Stage~1 F1-score of $0.729$ and a Stage~2 recognition accuracy of $72.6\%$, demonstrating that the combination of geometric constraints and colour matching successfully localises and recognises the majority of pool balls.
 \end{abstract}
 
 \section{Theory of Processing}
@@ -170,16 +170,16 @@ Image & Correct labels & True positives & Accuracy \\
 \hline
 Table 1 & 11 & 13 & 0.846 \\
 Table 2 & 8 & 11 & 0.727 \\
-Table 3 & 8 & 11 & 0.727 \\
+Table 3 & 7 & 11 & 0.636 \\
 Table 4 & 9 & 12 & 0.750 \\
 Table 5 & 4 & 7 & 0.571 \\
 Table 6 & 6 & 8 & 0.750 \\
 \hline
-Overall & 46 & 62 & 0.742 \\
+Overall & 45 & 62 & 0.726 \\
 \hline
 \end{tabular}
 \end{table}
 
-The overall recognition accuracy is $0.742$, meaning that approximately three out of four correctly localised balls receive the correct label. The main residual confusions are between similarly coloured solids and stripes, and between the cue ball and other low-saturation balls; these confusions arise because a hue--saturation histogram captures colour distribution but not the spatial arrangement of the number, stripe, or highlight. Recognition was most affected on Tables~3, 5 and~6, where shadows and glare altered the apparent hue and saturation of several balls and caused both false rejections and label confusions; Table~5 was particularly affected, with only four of seven correctly localised balls receiving the correct label. The colour threshold nevertheless performs the intended secondary filtering role, raising Stage~1 precision from $0.745$ to $0.789$ while recovering much of the recall lost under the stricter threshold.
+The overall recognition accuracy is $0.726$, meaning that approximately three out of four correctly localised balls receive the correct label. The main residual confusions are between similarly coloured solids and stripes, and between the cue ball and other low-saturation balls; these confusions arise because a hue--saturation histogram captures colour distribution but not the spatial arrangement of the number, stripe, or highlight. Recognition was most affected on Tables~3, 5 and~6, where shadows and glare altered the apparent hue and saturation of several balls and caused both false rejections and label confusions; Table~5 was particularly affected, with only four of seven correctly localised balls receiving the correct label. The colour threshold nevertheless performs the intended secondary filtering role, raising Stage~1 precision from $0.745$ to $0.789$ while recovering much of the recall lost under the stricter threshold.
 
 \end{document}

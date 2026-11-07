@@ -590,6 +590,9 @@ void MyApplication()
         totalCorrectLabels += metrics.correctLabels;
         ++imageCount;
 
+        cv::imwrite("results/" + imageBase + "_1_mask.jpeg", tableMask);
+        cv::imwrite("results/" + imageBase + "_2_masked_gray.jpeg", maskedGray);
+        cv::imwrite("results/" + imageBase + "_3_colored_answers.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_mask.jpeg", feltMask);
         cv::imwrite("results/" + imageBase + "_edges.jpeg", blurredImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
