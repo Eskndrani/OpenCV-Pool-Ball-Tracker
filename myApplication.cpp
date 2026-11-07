@@ -394,9 +394,6 @@ void MyApplication()
 
     std::cout << std::fixed << std::setprecision(3);
 
-    double precisionSum = 0.0;
-    double recallSum = 0.0;
-    double f1Sum = 0.0;
     int totalTruePositives = 0;
     int totalFalsePositives = 0;
     int totalFalseNegatives = 0;
@@ -438,9 +435,9 @@ void MyApplication()
             houghCircles,
             cv::HOUGH_GRADIENT,
             1.0,
-            38.0,
-            80.0,
-            9.0,
+            40.0,
+            110.0,
+            6.0,
             19,
             24
         );
@@ -486,7 +483,7 @@ void MyApplication()
             const ClassificationResult classification =
                 classifyBall(hsvImage, center, circle[2], referenceBalls);
 
-            if (classification.label < 0 || classification.distance > 0.75)
+            if (classification.label < 0 || classification.distance > 0.80)
             {
                 continue;
             }
@@ -529,9 +526,6 @@ void MyApplication()
             evaluateDetections(recognizedBalls, recognizedLabels, groundTruth, 21.5F);
         printDetectionMetrics(imageName, metrics);
 
-        precisionSum += metrics.precision;
-        recallSum += metrics.recall;
-        f1Sum += metrics.f1;
         totalTruePositives += metrics.truePositives;
         totalFalsePositives += metrics.falsePositives;
         totalFalseNegatives += metrics.falseNegatives;
@@ -545,15 +539,23 @@ void MyApplication()
         cv::imwrite("results/" + imageBase + "_labeled.jpeg", detectionImage);
     }
 
-    const int divisor = (imageCount > 0) ? imageCount : 1;
+    const double overallPrecision = (totalTruePositives + totalFalsePositives) > 0
+        ? static_cast<double>(totalTruePositives) / (totalTruePositives + totalFalsePositives)
+        : 0.0;
+    const double overallRecall = (totalTruePositives + totalFalseNegatives) > 0
+        ? static_cast<double>(totalTruePositives) / (totalTruePositives + totalFalseNegatives)
+        : 0.0;
+    const double overallF1 = (overallPrecision + overallRecall) > 0.0
+        ? 2.0 * overallPrecision * overallRecall / (overallPrecision + overallRecall)
+        : 0.0;
     const double recognitionAccuracy = (totalTruePositives > 0)
         ? static_cast<double>(totalCorrectLabels) / totalTruePositives
         : 0.0;
 
-    std::cout << "Overall average metrics across " << imageCount << " images:" << std::endl;
-    std::cout << "  Average precision: " << precisionSum / divisor << std::endl;
-    std::cout << "  Average recall: " << recallSum / divisor << std::endl;
-    std::cout << "  Average F1-score: " << f1Sum / divisor << std::endl;
+    std::cout << "Overall metrics across " << imageCount << " images:" << std::endl;
+    std::cout << "  Overall precision: " << overallPrecision << std::endl;
+    std::cout << "  Overall recall: " << overallRecall << std::endl;
+    std::cout << "  Overall F1-score: " << overallF1 << std::endl;
     std::cout << "  Total true positives: " << totalTruePositives << std::endl;
     std::cout << "  Total false positives: " << totalFalsePositives << std::endl;
     std::cout << "  Total false negatives: " << totalFalseNegatives << std::endl;
