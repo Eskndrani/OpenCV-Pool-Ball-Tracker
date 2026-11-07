@@ -199,6 +199,8 @@ void MyApplication()
         cv::warpPerspective(inputImage, warpedImage, perspectiveTransform, cv::Size(1434, 683));
         cv::imwrite("results/warped_" + imageName, warpedImage);
 
+        const std::string imageBase = imageName.substr(0, imageName.find_last_of('.'));
+
         cv::Mat grayImage;
         cv::cvtColor(warpedImage, grayImage, cv::COLOR_BGR2GRAY);
 
@@ -277,8 +279,13 @@ void MyApplication()
         for (const cv::Vec3f& circle : houghCircles)
         {
             const cv::Point2f center(circle[0], circle[1]);
-            bool nearPocket = false;
+            if (center.x < 24 || center.x > 1434 - 24 ||
+                center.y < 24 || center.y > 683 - 24)
+            {
+                continue;
+            }
 
+            bool nearPocket = false;
             for (const cv::Point2f& pocket : pocketCenters)
             {
                 if (cv::norm(center - pocket) < 60.0)
@@ -333,10 +340,16 @@ void MyApplication()
         totalFalseNegatives += metrics.falseNegatives;
         ++imageCount;
 
+        cv::imwrite("results/" + imageBase + "_backproject_mask.jpeg", feltMask);
+        cv::imwrite("results/" + imageBase + "_masked_gray.jpeg", maskedGray);
+        cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
+
         cv::imshow("Input Image", inputImage);
         cv::imshow("Warped Image", warpedImage);
         cv::imshow("Canny Edges (Debug)", cannyEdges);
-        cv::imshow("Detected Balls", detectionImage);
+        cv::imshow("Backprojection Mask - " + imageName, feltMask);
+        cv::imshow("Masked Gray - " + imageName, maskedGray);
+        cv::imshow("Detected Balls - " + imageName, detectionImage);
         cv::waitKey(0);
     }
 
