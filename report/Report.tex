@@ -1,0 +1,91 @@
+\documentclass[12pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\begin{document}
+
+\section{Theory of Processing}
+
+\subsection{Planar projective geometry and the homography}
+
+A photograph is formed by central projection: rays from points in the scene pass through the camera centre and intersect the image plane. When all points of interest lie on one physical plane---here, the flat playing surface bounded by the cushions---the mapping between that plane and the image is a projective transformation of the plane. Such a transformation is represented by a homogeneous $3\times3$ matrix $\mathbf{H}$, called a homography. If a table point has homogeneous image coordinates $\mathbf{x}=(x,y,1)^{\mathsf T}$, its corresponding point in the rectified table frame is
+\begin{equation}
+\mathbf{x}' \;=\; \begin{bmatrix} X' \\ Y' \\ W' \end{bmatrix}
+\;\sim\;
+\mathbf{H}\,\mathbf{x}
+\;=\;
+\begin{bmatrix}
+h_{11} & h_{12} & h_{13}\\
+h_{21} & h_{22} & h_{23}\\
+h_{31} & h_{32} & h_{33}
+\end{bmatrix}
+\begin{bmatrix} x \\ y \\ 1 \end{bmatrix},
+\end{equation}
+where $\sim$ denotes equality up to an arbitrary non-zero scale factor. The Euclidean coordinates of the rectified point are $x'=X'/W'$ and $y'=Y'/W'$.
+
+Because the matrix is defined only up to scale, it has eight independent ratios and therefore eight degrees of freedom; the convention $h_{33}=1$ is normally adopted when $W'$ does not vanish. Each pair of corresponding points supplies two independent scalar equations. Consequently, four point correspondences, with no three collinear, are both necessary and sufficient to determine the homography uniquely. The four correspondences used here are the four cushion-to-cushion corners of the table.
+
+Geometrically, a homography preserves straight lines, conics, incidence, and cross-ratios, but it does not preserve lengths, angles, parallelism, or area ratios in general. These are precisely the distortions visible in an angled photograph: parallel cushions converge towards vanishing points, the far end of the table appears shorter than the near end, and equal physical distances occupy different numbers of pixels at different depths. A homography can undo those distortions because the table is planar. Once the four corners are mapped to the corners of a rectangle with the correct physical aspect ratio, the entire plane is rectified in the same operation. The resulting image is a metric view of the table: distances measured on it can be related directly to distances on the real table.
+
+\subsection{The source coordinates}
+
+The source coordinates describe where the four physical table corners appear in the first supplied photograph. The coordinate convention is the standard image convention: $x$ increases to the right along a column, $y$ increases downwards along a row, and the origin is the top-left corner of the photograph. The supplied corner measurements are recorded as row and column pairs, so they are converted to $(x,y)=(\text{column},\text{row})$ before use.
+
+\begin{center}
+\begin{tabular}{lcc}
+\hline
+Physical corner & Source $x$ (column) & Source $y$ (row)\\
+\hline
+Top-left     & 337  & 35\\
+Top-right    & 1570 & 21\\
+Bottom-right & 1888 & 451\\
+Bottom-left  & 38   & 472\\
+\hline
+\end{tabular}
+\end{center}
+
+These numbers are not arbitrary. Each pair locates the intersection of two cushion noses, that is, the inner boundary of the playing surface rather than the outer edge of the wooden rail. This choice is important for two reasons. First, the playing surface is the planar region on which the balls rest, so its corners define the plane that must be rectified. Second, the top of the rail lies above the cloth and would introduce a parallax error if the outer rail corners were used; locating the cushion-to-cushion boundary keeps the four reference points as close as possible to the true plane of ball contact.
+
+The coordinates also encode the perspective of the particular viewpoint. The top-left and top-right corners have row coordinates $35$ and $21$, whereas the bottom-left and bottom-right corners have row coordinates $472$ and $451$. The near edge therefore lies substantially lower in the image than the far edge, and the horizontal separation of the top corners ($1570-337=1233$ pixels) is much smaller than that of the bottom corners ($1888-38=1850$ pixels). This trapezoidal shape is the expected signature of a rectangular table viewed obliquely: the far edge is foreshortened and the side cushions converge towards a vanishing point. The four coordinates capture that trapezoid exactly, so the homography is determined by the actual viewing geometry rather than by an approximate crop.
+
+The ordering of the correspondences is equally important. The top-left source point must correspond to the top-left destination corner, the top-right to the top-right, the bottom-right to the bottom-right, and the bottom-left to the bottom-left. A different cyclic ordering would produce a valid but incorrectly rotated or mirrored homography. The order used here follows the cushion boundary consistently in a clockwise direction, which preserves the orientation of the table and ensures that the long side remains horizontal in the rectified frame.
+
+\subsection{The destination coordinates and the 1434 by 683 frame}
+
+The destination is a rectangle whose dimensions are chosen from the physical dimensions of the table, not from the dimensions of the photograph. The assignment specifies a cushion-to-cushion playing area of $1434\,\mathrm{mm}$ by $683\,\mathrm{mm}$. The rectified frame therefore has $1434$ columns and $683$ rows, and the four destination corners are placed at
+\[
+(0,0),\qquad (1434,0),\qquad (1434,683),\qquad (0,683).
+\]
+The width of the destination rectangle is thus associated with the long physical dimension and the height with the short physical dimension. This is the correct aspect ratio: $1434/683\approx2.10$, which is the ratio of the real table's length to its width.
+
+The reason for choosing exactly $1434$ columns and $683$ rows is to make the horizontal and vertical scale factors equal to one pixel per millimetre. Along the long side, the destination spans $1434$ pixels for $1434\,\mathrm{mm}$, giving
+\[
+s_x=\frac{1434\ \text{pixels}}{1434\ \mathrm{mm}}=1\ \frac{\text{pixel}}{\mathrm{mm}}.
+\]
+Along the short side, the destination spans $683$ pixels for $683\,\mathrm{mm}$, giving
+\[
+s_y=\frac{683\ \text{pixels}}{683\ \mathrm{mm}}=1\ \frac{\text{pixel}}{\mathrm{mm}}.
+\]
+Because $s_x=s_y$, the rectification is isotropic: it does not stretch the table preferentially in one direction. A different destination size, such as $1434\times450$ or an arbitrary crop, would still produce a rectangular image, but it would introduce a misleading vertical scale and would destroy the one-to-one correspondence between physical millimetres and image pixels.
+
+It is useful to be precise about the boundary convention. The destination corners are the continuous corners of the physical playing area, while pixel centres lie half a pixel inside the image boundary. With corners at $0$ and $1434$, each column represents a one-millimetre-wide strip and each row a one-millimetre-high strip. Thus one pixel represents one square millimetre of the table surface to the accuracy of the corner measurements and the rectification. This is the intended metric interpretation of the $1434\times683$ frame.
+
+\subsection{The one-to-one scale and its consequences for ball detection}
+
+The central consequence of the destination choice is that the rectified image has a fixed, known scale of one pixel per millimetre. If a physical length on the table is $L$ millimetres, its rectified image length is $L$ pixels. In particular, a standard pool ball has a nominal diameter of $43\,\mathrm{mm}$, so in the rectified frame it must appear as a circle approximately $43$ pixels in diameter, with a radius of approximately
+\[
+r=\frac{43}{2}=21.5\ \text{pixels}.
+\]
+This statement is independent of where the ball lies on the table and independent of how far away it was in the original photograph. In the original oblique view, a ball near the far cushion subtends fewer pixels than an identical ball near the camera, and the foreshortening changes with position. After rectification, all points on the table plane are mapped with the same scale, so the same physical ball diameter always occupies the same number of rectified pixels. The approximate qualification is needed only because a ball is a three-dimensional sphere whose centre lies slightly above the plane; its silhouette can therefore show a small parallax relative to the contact point. For detection purposes this effect is small compared with the $43$-pixel diameter and does not alter the scale argument.
+
+This fixed scale greatly simplifies the detection stage. A detector no longer needs to search over an unknown range of ball sizes, nor must it compensate for the depth-dependent shrinking that would occur in the original perspective image. The expected radius of approximately $21.5$ pixels provides a physically justified prior: candidate regions can be tested against an area range, a circularity range, and a distance-transform or radial response centred on the expected radius. Thresholds can be expressed directly in millimetres, because one pixel is one millimetre, and a tolerance chosen in the transformed frame has an immediate physical meaning. False candidates that are much smaller or much larger than a ball can be rejected on physical grounds rather than by ad hoc pixel thresholds.
+
+The same metric property also simplifies the later stages. Ball centres can be compared with the supplied ground-truth locations directly in table coordinates, since the transformed pixel coordinates are also millimetre coordinates. Localisation error can be reported in millimetres without an additional conversion, and a matching tolerance can be stated as a physical distance. Recognition is likewise easier because every detected ball can be extracted at a consistent physical scale, so a fixed-size normalisation does not distort balls that were originally nearer or farther from the camera. In short, the $1434\times683$ destination is not merely a convenient image size: it is the choice that turns the rectified photograph into a metric map of the table, and that metric map is what makes robust, scale-invariant ball detection possible.
+
+\end{document}
