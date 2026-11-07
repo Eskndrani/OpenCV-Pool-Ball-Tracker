@@ -279,8 +279,8 @@ void MyApplication()
         for (const cv::Vec3f& circle : houghCircles)
         {
             const cv::Point2f center(circle[0], circle[1]);
-            if (center.x < 24 || center.x > 1434 - 24 ||
-                center.y < 24 || center.y > 683 - 24)
+            if (center.x < 22 || center.x > 1434 - 22 ||
+                center.y < 22 || center.y > 683 - 22)
             {
                 continue;
             }
@@ -288,7 +288,7 @@ void MyApplication()
             bool nearPocket = false;
             for (const cv::Point2f& pocket : pocketCenters)
             {
-                if (cv::norm(center - pocket) < 60.0)
+                if (cv::norm(center - pocket) < 95.0)
                 {
                     nearPocket = true;
                     break;
@@ -344,13 +344,6 @@ void MyApplication()
         cv::imwrite("results/" + imageBase + "_masked_gray.jpeg", maskedGray);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
 
-        cv::imshow("Input Image", inputImage);
-        cv::imshow("Warped Image", warpedImage);
-        cv::imshow("Canny Edges (Debug)", cannyEdges);
-        cv::imshow("Backprojection Mask - " + imageName, feltMask);
-        cv::imshow("Masked Gray - " + imageName, maskedGray);
-        cv::imshow("Detected Balls - " + imageName, detectionImage);
-        cv::waitKey(0);
     }
 
     const int divisor = (imageCount > 0) ? imageCount : 1;
