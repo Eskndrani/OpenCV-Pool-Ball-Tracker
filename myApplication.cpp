@@ -340,8 +340,8 @@ void MyApplication()
         totalFalseNegatives += metrics.falseNegatives;
         ++imageCount;
 
-        cv::imwrite("results/" + imageBase + "_backproject_mask.jpeg", feltMask);
-        cv::imwrite("results/" + imageBase + "_masked_gray.jpeg", maskedGray);
+        cv::imwrite("results/" + imageBase + "_mask.jpeg", feltMask);
+        cv::imwrite("results/" + imageBase + "_edges.jpeg", blurredImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
 
     }
