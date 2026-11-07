@@ -120,33 +120,33 @@ A detection is counted as a true positive when its centre lies within $21.5$ pix
 \hline
 Image & TP & FP & FN & Precision & Recall & F1-score \\
 \hline
-Table 1 & 10 & 0 & 6 & 1.000 & 0.625 & 0.769 \\
-Table 2 & 10 & 2 & 6 & 0.833 & 0.625 & 0.714 \\
-Table 3 & 10 & 5 & 6 & 0.667 & 0.625 & 0.645 \\
-Table 4 & 11 & 1 & 4 & 0.917 & 0.733 & 0.815 \\
-Table 5 & 6 & 3 & 8 & 0.667 & 0.429 & 0.522 \\
-Table 6 & 7 & 2 & 6 & 0.778 & 0.538 & 0.636 \\
+Table 1 & 13 & 0 & 3 & 1.000 & 0.812 & 0.897 \\
+Table 2 & 11 & 3 & 5 & 0.786 & 0.688 & 0.733 \\
+Table 3 & 11 & 6 & 5 & 0.647 & 0.688 & 0.667 \\
+Table 4 & 12 & 3 & 3 & 0.800 & 0.800 & 0.800 \\
+Table 5 & 7 & 3 & 7 & 0.700 & 0.500 & 0.583 \\
+Table 6 & 8 & 2 & 5 & 0.800 & 0.615 & 0.696 \\
 \hline
-Overall & 54 & 13 & 36 & 0.810 & 0.596 & 0.684 \\
+Overall & 62 & 17 & 28 & 0.789 & 0.684 & 0.729 \\
 \hline
 \end{tabular}
 \end{table}
 
 \subsection{Discussion}
 
-Table~1 gives the strongest result in terms of precision after colour verification. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The morphological repair removes the jagged lighting-induced holes that would otherwise create artificial gradients, while the expanded pocket constraint removes the responses from the pocket lips as well as the pocket centres. The cushion boundary constraint removes responses from the wooden rails, and the minimum centre separation removes the majority of double detections on a single ball. The colour verification described in the next section then acts as a secondary false-positive filter. It raises the overall precision from $0.745$ to $0.810$, because shadow patches, chalk marks, and other non-ball structures are rejected when their colour distributions do not match any reference ball. The same filter also rejects some genuine balls whose histograms are distorted by occlusion, strong highlights, or partial visibility, so overall recall falls from $0.772$ to $0.596$ and the overall F1-score becomes $0.684$. Residual false positives are mainly near-ball responses whose colour still resembles a reference ball, and residual false negatives are dominated by occluded or partially visible balls whose colour distributions are no longer reliable.
+Table~1 gives the strongest result in terms of precision after colour verification. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The morphological repair removes the jagged lighting-induced holes that would otherwise create artificial gradients, while the expanded pocket constraint removes the responses from the pocket lips as well as the pocket centres. The cushion boundary constraint removes responses from the wooden rails, and the minimum centre separation removes the majority of double detections on a single ball. The colour verification described in the next section then acts as a secondary false-positive filter. It raises the overall precision from $0.745$ to $0.789$, because shadow patches, chalk marks, and other non-ball structures are rejected when their colour distributions do not match any reference ball. The same filter still rejects some genuine balls whose histograms are distorted by occlusion, strong highlights, or partial visibility, so overall recall falls from $0.772$ to $0.684$ and the overall F1-score becomes $0.729$. Compared with the previous, more aggressive colour threshold, shrinking the sampling mask and relaxing the rejection threshold recovers a substantial part of the lost recall while retaining a clear precision gain.
 
 \section{Stage 2: Recognition}
 
 \subsection{Reference colour fingerprints}
 
-Recognition assigns every surviving detection to one of the sixteen known balls. A single reference photograph containing the cue ball and all fifteen object balls is processed once. Each reference ball is cropped using its detected circular extent, and a circular mask is applied so that only pixels inside the ball contribute to the descriptor. The circular mask is essential because the corners of a square bounding box contain green felt and shadow, which would contaminate the colour fingerprint of the ball. The masked region is converted to the HSV colour space, and a two-dimensional histogram of hue and saturation is accumulated with $30$ hue bins and $32$ saturation bins. The histogram is normalised to the range $0$ to $255$, so that comparisons are independent of the absolute number of pixels in each crop. The sixteen normalised histograms are stored together with their labels: label $0$ for the cue ball and labels $1$ to $15$ for the object balls.
+Recognition assigns every surviving detection to one of the sixteen known balls. A single reference photograph containing the cue ball and all fifteen object balls is processed once. Each reference ball is cropped using its detected circular extent, and a circular mask is applied so that only pixels inside the ball contribute to the descriptor. The circular mask is essential because the corners of a square bounding box contain green felt and shadow, which would contaminate the colour fingerprint of the ball. To further prevent background pollution, the colour sampling mask is deliberately made smaller than the full ball radius: only a central region of radius $16$ pixels is sampled. This ensures that a slightly off-centre detection cannot admit felt, shadow, or bounding-box corner pixels into the histogram. The same reduced sampling mask is used for the reference balls and for the test candidates so that both descriptors are measured under identical conditions. The masked region is converted to the HSV colour space, and a two-dimensional histogram of hue and saturation is accumulated with $30$ hue bins and $32$ saturation bins. The histogram is normalised to the range $0$ to $255$, so that comparisons are independent of the absolute number of pixels in each crop. The sixteen normalised histograms are stored together with their labels: label $0$ for the cue ball and labels $1$ to $15$ for the object balls.
 
 \subsection{Classification and secondary false-positive filtering}
 
 For each detection in a test image, the same circular mask and the same hue--saturation binning are used to build a normalised test histogram from the rectified image. The test histogram is compared with every reference histogram using the Bhattacharyya distance, which measures the lack of overlap between two normalised distributions. A distance of zero indicates identical distributions, and larger values indicate progressively weaker similarity. The reference with the smallest distance is selected as the predicted label.
 
-A maximum Bhattacharyya distance of $0.65$ is imposed. If the smallest distance exceeds this threshold, no reference ball provides a credible colour match, and the detection is rejected. This is a secondary false-positive filter for Stage 1: shadows, chalk marks, pocket lips, and other non-ball structures generally have colour distributions far from every reference ball, so they are removed before evaluation. The filter therefore trades recall for precision: it removes many false positives but can also remove genuine balls whose appearance is distorted by occlusion, glare, or partial visibility.
+A maximum Bhattacharyya distance of $0.75$ is imposed. If the smallest distance exceeds this threshold, no reference ball provides a credible colour match, and the detection is rejected. This is a secondary false-positive filter for Stage 1: shadows, chalk marks, pocket lips, and other non-ball structures generally have colour distributions far from every reference ball, so they are removed before evaluation. The filter therefore trades recall for precision: it removes many false positives but can also remove genuine balls whose appearance is distorted by occlusion, glare, or partial visibility. The relaxed $0.75$ threshold, together with the reduced sampling mask, recovers a substantial fraction of the genuine balls that the stricter setting rejected.
 
 \subsection{Recognition accuracy}
 
@@ -160,19 +160,19 @@ Recognition accuracy is defined as the number of correctly labelled true-positiv
 \hline
 Image & Correct labels & True positives & Accuracy \\
 \hline
-Table 1 & 9 & 10 & 0.900 \\
-Table 2 & 8 & 10 & 0.800 \\
-Table 3 & 9 & 10 & 0.900 \\
-Table 4 & 8 & 11 & 0.727 \\
-Table 5 & 3 & 6 & 0.500 \\
-Table 6 & 6 & 7 & 0.857 \\
+Table 1 & 11 & 13 & 0.846 \\
+Table 2 & 8 & 11 & 0.727 \\
+Table 3 & 8 & 11 & 0.727 \\
+Table 4 & 9 & 12 & 0.750 \\
+Table 5 & 4 & 7 & 0.571 \\
+Table 6 & 6 & 8 & 0.750 \\
 \hline
-Overall & 43 & 54 & 0.796 \\
+Overall & 46 & 62 & 0.742 \\
 \hline
 \end{tabular}
 \end{table}
 
-The overall recognition accuracy is $0.796$, meaning that approximately four out of five correctly localised balls receive the correct label. The main residual confusions are between similarly coloured solids and stripes, and between the cue ball and other low-saturation balls; these confusions arise because a hue--saturation histogram captures colour distribution but not the spatial arrangement of the number, stripe, or highlight. The colour threshold nevertheless performs the intended secondary filtering role, raising Stage 1 precision from $0.745$ to $0.810$.
+The overall recognition accuracy is $0.742$, meaning that approximately three out of four correctly localised balls receive the correct label. The main residual confusions are between similarly coloured solids and stripes, and between the cue ball and other low-saturation balls; these confusions arise because a hue--saturation histogram captures colour distribution but not the spatial arrangement of the number, stripe, or highlight. The colour threshold nevertheless performs the intended secondary filtering role, raising Stage 1 precision from $0.745$ to $0.789$ while recovering much of the recall lost under the stricter threshold.
 
 \end{document}
 

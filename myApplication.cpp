@@ -108,7 +108,7 @@ cv::Mat calculateBallHistogram(const cv::Mat& hsvImage, const cv::Point2f& cente
     cv::circle(
         mask,
         cv::Point(cvRound(center.x) - left, cvRound(center.y) - top),
-        cvRound(radius * 0.9F),
+        16,
         cv::Scalar(255),
         cv::FILLED
     );
@@ -538,7 +538,7 @@ void MyApplication()
             const ClassificationResult classification =
                 classifyBall(hsvImage, center, circle[2], referenceBalls);
 
-            if (classification.label < 0 || classification.distance > 0.65)
+            if (classification.label < 0 || classification.distance > 0.75)
             {
                 continue;
             }
@@ -593,6 +593,7 @@ void MyApplication()
         cv::imwrite("results/" + imageBase + "_mask.jpeg", feltMask);
         cv::imwrite("results/" + imageBase + "_edges.jpeg", blurredImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
+        cv::imwrite("results/" + imageBase + "_labeled.jpeg", detectionImage);
     }
 
     const int divisor = (imageCount > 0) ? imageCount : 1;
