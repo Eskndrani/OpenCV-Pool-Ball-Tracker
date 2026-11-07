@@ -4,48 +4,38 @@
 #include <string>
 #include <vector>
 
+using namespace std;
+
 void MyApplication()
 {
-    const std::string inputImagePath = "data/images/Table1.jpeg";
-    const std::string warpedImagePath = "results/warped_Table1.jpeg";
-
-    const cv::Mat inputImage = cv::imread(inputImagePath);
-    if (inputImage.empty())
-    {
-        std::cerr << "Failed to load image: " << inputImagePath << std::endl;
+    // Load the input image and define the table corners in the image.
+    string inputImagePath = "data/images/Table1.jpeg";
+    cv::Mat inputImage = cv::imread(inputImagePath);
+    if (inputImage.empty()) {
+        std::cout << "Error loading image\n";
         return;
     }
-
-    // Table corners in the original image, ordered top-left, top-right,
-    // bottom-right, bottom-left. Coordinates are (column, row).
-    const std::vector<cv::Point2f> tableCorners = {
-        cv::Point2f(337.0F, 35.0F),
-        cv::Point2f(1570.0F, 21.0F),
-        cv::Point2f(1888.0F, 451.0F),
-        cv::Point2f(38.0F, 472.0F)
+    // Define the table corners in the image (top-left, top-right, bottom-right, bottom-left).
+    vector<cv::Point2f> tableCorners = {
+        cv::Point2f(337, 35), 
+        cv::Point2f(1570, 21), 
+        cv::Point2f(1570, 451), 
+        cv::Point2f(38, 472)    
+    };
+    // Define destination corners for the perspective transform (top-left, top-right, bottom-right, bottom-left).
+    vector<cv::Point2f> destCorners = {
+        cv::Point2f(0, 0),
+        cv::Point2f(1434, 0),
+        cv::Point2f(1434, 450),
+        cv::Point2f(0, 450)
     };
 
-    // Map the table to a 1434 x 683 image, matching the physical
-    // cushion-to-cushion dimensions in millimetres.
-    const std::vector<cv::Point2f> destCorners = {
-        cv::Point2f(0.0F, 0.0F),
-        cv::Point2f(1434.0F, 0.0F),
-        cv::Point2f(1434.0F, 683.0F),
-        cv::Point2f(0.0F, 683.0F)
-    };
-
-    const cv::Mat perspectiveTransform = cv::getPerspectiveTransform(tableCorners, destCorners);
+    cv::Mat perspectiveTransform = cv::getPerspectiveTransform(tableCorners, destCorners);
 
     cv::Mat warpedImage;
-    cv::warpPerspective(inputImage, warpedImage, perspectiveTransform, cv::Size(1434, 683));
+    cv::warpPerspective(inputImage, warpedImage, perspectiveTransform, cv::Size(1434,  683));
 
-    if (!cv::imwrite(warpedImagePath, warpedImage))
-    {
-        std::cerr << "Failed to save image: " << warpedImagePath << std::endl;
-        return;
-    }
-
-    std::cout << "Saved rectified table image to " << warpedImagePath << std::endl;
+    cv::imwrite("results/warped_Table1.jpeg", warpedImage);
 
     // TODO: Stage 1 - Isolate the green playing surface and remove rails,
     // pockets, markings, and background from further processing.
@@ -58,6 +48,8 @@ void MyApplication()
 
     // TODO: Evaluate against ground truth and report detection, localisation,
     // and recognition metrics.
+
+    std::cout << "Pool ball assignment template: implementation pending." << std::endl;
 }
 
 #ifndef MYAPPLICATION_NO_MAIN
