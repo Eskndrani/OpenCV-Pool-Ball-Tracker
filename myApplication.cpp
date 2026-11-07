@@ -252,6 +252,12 @@ void MyApplication()
         cv::Mat tableMask;
         cv::bitwise_not(feltMask, tableMask);
 
+        const cv::Mat morphologyKernel =
+            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(25, 25));
+        cv::morphologyEx(tableMask, tableMask, cv::MORPH_CLOSE, morphologyKernel);
+        cv::morphologyEx(tableMask, tableMask, cv::MORPH_OPEN, morphologyKernel);
+        cv::bitwise_not(tableMask, feltMask);
+
         cv::Mat maskedGray;
         cv::bitwise_and(grayImage, tableMask, maskedGray);
         const double meanFeltValue = cv::mean(grayImage(feltRoiRect))[0];

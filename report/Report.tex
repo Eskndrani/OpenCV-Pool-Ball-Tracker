@@ -100,6 +100,10 @@ Segmentation of the green playing surface is formulated as two-dimensional histo
 
 The HSV colour space is used instead of RGB for a fundamental reason. In RGB, colour and illumination are coupled: the three channel values change jointly when the incident light changes, so a shadow, a highlight, or direct glare alters the RGB vector even when the underlying surface colour is unchanged. Consequently, shadow boundaries can appear as strong intensity edges and can be mistaken for object boundaries. HSV decouples colour from illumination: hue describes the dominant wavelength, saturation describes the purity of the colour, and value describes brightness. By constructing the histogram from hue and saturation only, the representation is largely independent of the brightness changes caused by shadows, chalk dust, and glare. The green felt therefore retains a compact and stable distribution in the hue--saturation plane, while balls of other colours fall outside this distribution. This separation allows the felt to be segmented robustly across all six images without relying on fixed RGB thresholds, which would be sensitive to the particular lighting of each frame.
 
+\subsection{Morphological repair of the felt mask}
+
+The raw binary felt mask can contain small dark holes and jagged gaps where uneven illumination, shadow, or low local contrast causes felt pixels to fall outside the histogram distribution. Such irregularities create artificial intensity gradients at their boundaries, and these gradients can be mistaken for ball edges during circular detection. To repair the mask before it is used, a morphological closing is applied first: a large elliptical structuring element of size $25\times25$ dilates the felt region and then erodes it, filling small holes and bridging narrow gaps without changing the overall extent of the felt. A morphological opening is then applied with the same structuring element, eroding and then dilating the region, which removes small isolated noise components and smooths thin protrusions. The elliptical shape is appropriate because the felt boundary and the ball silhouettes are locally rounded, so the operation repairs the mask along directions consistent with the geometry of the scene. Because the repaired mask is used to suppress the felt before gradient detection, the artificial gradients caused by lighting-induced fragmentation are removed at their source rather than being filtered after detection.
+
 \subsection{Minimum centre separation}
 
 Because the rectified image has a scale of one pixel per millimetre, the $43\,\mathrm{mm}$ ball diameter corresponds to $43$ pixels. Two distinct ball centres therefore cannot be closer than approximately $43$ pixels on the physical table. However, residual lens distortion and the finite accuracy of the rectification cause balls in a tightly packed rack to appear slightly closer than their true physical separation after the warp. A minimum permitted centre separation of $38$ pixels is therefore used. This value lies below the nominal $43$-pixel diameter to accommodate that residual distortion while still suppressing multiple detections on the same ball. The constraint removes overlapping responses without merging genuinely adjacent balls in the rack.
@@ -116,20 +120,20 @@ A detection is counted as a true positive when its centre lies within $21.5$ pix
 \hline
 Image & TP & FP & FN & Precision & Recall & F1-score \\
 \hline
-Table 1 & 15 & 1 & 1 & 0.938 & 0.938 & 0.938 \\
-Table 2 & 13 & 3 & 3 & 0.812 & 0.812 & 0.812 \\
-Table 3 & 12 & 6 & 4 & 0.667 & 0.750 & 0.706 \\
-Table 4 & 12 & 4 & 3 & 0.750 & 0.800 & 0.774 \\
-Table 5 & 8 & 5 & 6 & 0.615 & 0.571 & 0.593 \\
+Table 1 & 15 & 0 & 1 & 1.000 & 0.938 & 0.968 \\
+Table 2 & 13 & 4 & 3 & 0.765 & 0.812 & 0.788 \\
+Table 3 & 12 & 7 & 4 & 0.632 & 0.750 & 0.686 \\
+Table 4 & 13 & 4 & 2 & 0.765 & 0.867 & 0.812 \\
+Table 5 & 8 & 4 & 6 & 0.667 & 0.571 & 0.615 \\
 Table 6 & 9 & 5 & 4 & 0.643 & 0.692 & 0.667 \\
 \hline
-Overall & 69 & 24 & 21 & 0.737 & 0.761 & 0.748 \\
+Overall & 70 & 24 & 20 & 0.745 & 0.772 & 0.756 \\
 \hline
 \end{tabular}
 \end{table}
 
 \subsection{Discussion}
 
-Table~1 gives the strongest result, with an F1-score of $0.938$. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The expanded pocket constraint removes the responses from the pocket lips as well as the pocket centres, and the cushion boundary constraint removes responses from the wooden rails, while the minimum centre separation removes the majority of double detections on a single ball. The hue--saturation backprojection provides a stable felt mask despite the different lighting conditions in the six frames, and replacing the masked felt with its mean intensity prevents the mask boundary from generating spurious edges. Residual false positives are mainly near-ball responses that survive all constraints, and residual false negatives occur where a ball is strongly overlapped, only partially visible, very close to a pocket, or close enough to the cushion boundary to be excluded by the geometric constraint. The overall recall of $0.761$ shows that most balls are found across the six images, while the overall precision of $0.737$ and F1-score of $0.748$ quantify the remaining cost of those false positives and missed detections. These results provide the baseline against which any later recognition stage can be evaluated.
+Table~1 gives the strongest result, with an F1-score of $0.968$. The remaining images are more difficult because balls are frequently close to pockets, partially occluded, or tightly grouped, and because some ground-truth balls lie close to the table boundary. The morphological repair removes the jagged lighting-induced holes that would otherwise create artificial gradients, while the expanded pocket constraint removes the responses from the pocket lips as well as the pocket centres. The cushion boundary constraint removes responses from the wooden rails, and the minimum centre separation removes the majority of double detections on a single ball. The hue--saturation backprojection provides a stable felt mask despite the different lighting conditions in the six frames, and replacing the masked felt with its mean intensity prevents the mask boundary from generating spurious edges. Residual false positives are mainly near-ball responses that survive all constraints, and residual false negatives occur where a ball is strongly overlapped, only partially visible, very close to a pocket, or close enough to the cushion boundary to be excluded by the geometric constraint. The overall recall of $0.772$ shows that most balls are found across the six images, while the overall precision of $0.745$ and F1-score of $0.756$ quantify the remaining cost of those false positives and missed detections. These results provide the baseline against which any later recognition stage can be evaluated.
 
 \end{document}
