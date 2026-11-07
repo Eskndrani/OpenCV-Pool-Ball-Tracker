@@ -1,5 +1,6 @@
 #include <opencv2/opencv.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -17,14 +18,34 @@ struct DetectionMetrics
     int truePositives = 0;
     int falsePositives = 0;
     int falseNegatives = 0;
+    int correctLabels = 0;
     double precision = 0.0;
     double recall = 0.0;
     double f1 = 0.0;
+    double recognitionAccuracy = 0.0;
 };
 
-std::vector<cv::Point2f> loadGroundTruth(const std::string& csvPath, const std::string& imageName)
+struct GroundTruthBall
 {
-    std::vector<cv::Point2f> groundTruth;
+    cv::Point2f center;
+    int label = -1;
+};
+
+struct ReferenceBall
+{
+    int label = -1;
+    cv::Mat histogram;
+};
+
+struct ClassificationResult
+{
+    int label = -1;
+    double distance = 1e9;
+};
+
+std::vector<GroundTruthBall> loadGroundTruth(const std::string& csvPath, const std::string& imageName)
+{
+    std::vector<GroundTruthBall> groundTruth;
     std::ifstream file(csvPath);
 
     if (!file.is_open())
@@ -45,12 +66,12 @@ std::vector<cv::Point2f> loadGroundTruth(const std::string& csvPath, const std::
 
         std::stringstream lineStream(line);
         std::string image;
-        std::string label;
+        std::string labelText;
         std::string xText;
         std::string yText;
 
         std::getline(lineStream, image, ',');
-        std::getline(lineStream, label, ',');
+        std::getline(lineStream, labelText, ',');
         std::getline(lineStream, xText, ',');
         std::getline(lineStream, yText, ',');
 
@@ -61,7 +82,8 @@ std::vector<cv::Point2f> loadGroundTruth(const std::string& csvPath, const std::
 
         try
         {
-            groundTruth.emplace_back(std::stof(xText), std::stof(yText));
+            const int label = (labelText == "White") ? 0 : std::stoi(labelText);
+            groundTruth.push_back({cv::Point2f(std::stof(xText), std::stof(yText)), label});
         }
         catch (const std::exception&)
         {
@@ -72,16 +94,194 @@ std::vector<cv::Point2f> loadGroundTruth(const std::string& csvPath, const std::
     return groundTruth;
 }
 
+cv::Mat calculateBallHistogram(const cv::Mat& hsvImage, const cv::Point2f& center, float radius)
+{
+    const int left = std::max(0, cvRound(center.x - radius));
+    const int top = std::max(0, cvRound(center.y - radius));
+    const int right = std::min(hsvImage.cols - 1, cvRound(center.x + radius));
+    const int bottom = std::min(hsvImage.rows - 1, cvRound(center.y + radius));
+
+    const cv::Rect roiRect(left, top, right - left + 1, bottom - top + 1);
+    const cv::Mat roi = hsvImage(roiRect);
+
+    cv::Mat mask = cv::Mat::zeros(roi.size(), CV_8U);
+    cv::circle(
+        mask,
+        cv::Point(cvRound(center.x) - left, cvRound(center.y) - top),
+        cvRound(radius * 0.9F),
+        cv::Scalar(255),
+        cv::FILLED
+    );
+
+    int histogramSize[] = {30, 32};
+    float hueRange[] = {0, 180};
+    float saturationRange[] = {0, 256};
+    const float* histogramRanges[] = {hueRange, saturationRange};
+    int histogramChannels[] = {0, 1};
+
+    cv::Mat histogram;
+    cv::calcHist(
+        &roi,
+        1,
+        histogramChannels,
+        mask,
+        histogram,
+        2,
+        histogramSize,
+        histogramRanges,
+        true,
+        false
+    );
+    cv::normalize(histogram, histogram, 0, 255, cv::NORM_MINMAX);
+    return histogram;
+}
+
+std::vector<ReferenceBall> buildReferenceBalls(const std::string& referenceImagePath)
+{
+    std::vector<ReferenceBall> references;
+    const cv::Mat referenceImage = cv::imread(referenceImagePath);
+
+    if (referenceImage.empty())
+    {
+        std::cerr << "Could not load reference image: " << referenceImagePath << std::endl;
+        return references;
+    }
+
+    cv::Mat grayImage;
+    cv::cvtColor(referenceImage, grayImage, cv::COLOR_BGR2GRAY);
+    cv::Mat blurredImage;
+    cv::GaussianBlur(grayImage, blurredImage, cv::Size(5, 5), 1.5);
+
+    std::vector<cv::Vec3f> circles;
+    cv::HoughCircles(
+        blurredImage,
+        circles,
+        cv::HOUGH_GRADIENT,
+        1.0,
+        40.0,
+        80.0,
+        14.0,
+        20,
+        35
+    );
+
+    std::vector<cv::Vec3f> referenceCircles;
+    for (const cv::Vec3f& circle : circles)
+    {
+        if (circle[0] > 1000.0F && circle[1] > 110.0F && circle[1] < 230.0F)
+        {
+            referenceCircles.push_back(circle);
+        }
+    }
+
+    if (referenceCircles.size() != 16)
+    {
+        std::cerr << "Warning: expected 16 reference balls, found "
+                  << referenceCircles.size() << std::endl;
+    }
+
+    size_t cueIndex = 0;
+    for (size_t i = 1; i < referenceCircles.size(); ++i)
+    {
+        if (referenceCircles[i][0] < referenceCircles[cueIndex][0])
+        {
+            cueIndex = i;
+        }
+    }
+
+    std::vector<cv::Vec3f> topRow;
+    std::vector<cv::Vec3f> bottomRow;
+    for (size_t i = 0; i < referenceCircles.size(); ++i)
+    {
+        if (i == cueIndex)
+        {
+            continue;
+        }
+
+        if (referenceCircles[i][1] < 170.0F)
+        {
+            topRow.push_back(referenceCircles[i]);
+        }
+        else
+        {
+            bottomRow.push_back(referenceCircles[i]);
+        }
+    }
+
+    const auto sortByX = [](const cv::Vec3f& first, const cv::Vec3f& second)
+    {
+        return first[0] < second[0];
+    };
+    std::sort(topRow.begin(), topRow.end(), sortByX);
+    std::sort(bottomRow.begin(), bottomRow.end(), sortByX);
+
+    cv::Mat hsvImage;
+    cv::cvtColor(referenceImage, hsvImage, cv::COLOR_BGR2HSV);
+
+    const auto addReference = [&](int label, const cv::Vec3f& circle)
+    {
+        const cv::Mat histogram = calculateBallHistogram(
+            hsvImage,
+            cv::Point2f(circle[0], circle[1]),
+            circle[2]
+        );
+        references.push_back({label, histogram});
+    };
+
+    addReference(0, referenceCircles[cueIndex]);
+
+    for (size_t i = 0; i < topRow.size(); ++i)
+    {
+        addReference(static_cast<int>(i) + 1, topRow[i]);
+    }
+
+    for (size_t i = 0; i < bottomRow.size(); ++i)
+    {
+        addReference(static_cast<int>(i) + 9, bottomRow[i]);
+    }
+
+    return references;
+}
+
+ClassificationResult classifyBall(
+    const cv::Mat& hsvImage,
+    const cv::Point2f& center,
+    float radius,
+    const std::vector<ReferenceBall>& references)
+{
+    ClassificationResult result;
+    const cv::Mat testHistogram = calculateBallHistogram(hsvImage, center, radius);
+
+    for (const ReferenceBall& reference : references)
+    {
+        const double distance = cv::compareHist(
+            testHistogram,
+            reference.histogram,
+            cv::HISTCMP_BHATTACHARYYA
+        );
+
+        if (distance < result.distance)
+        {
+            result.distance = distance;
+            result.label = reference.label;
+        }
+    }
+
+    return result;
+}
+
 DetectionMetrics evaluateDetections(
     const std::vector<cv::Vec3f>& detections,
-    const std::vector<cv::Point2f>& groundTruth,
+    const std::vector<int>& predictedLabels,
+    const std::vector<GroundTruthBall>& groundTruth,
     float tolerance)
 {
     DetectionMetrics metrics;
     std::vector<bool> matched(groundTruth.size(), false);
 
-    for (const cv::Vec3f& detection : detections)
+    for (size_t detectionIndex = 0; detectionIndex < detections.size(); ++detectionIndex)
     {
+        const cv::Vec3f& detection = detections[detectionIndex];
         const cv::Point2f center(detection[0], detection[1]);
         int bestIndex = -1;
         float bestDistance = 0.0F;
@@ -93,7 +293,7 @@ DetectionMetrics evaluateDetections(
                 continue;
             }
 
-            const float distance = static_cast<float>(cv::norm(center - groundTruth[i]));
+            const float distance = static_cast<float>(cv::norm(center - groundTruth[i].center));
             if (bestIndex < 0 || distance < bestDistance)
             {
                 bestIndex = static_cast<int>(i);
@@ -105,6 +305,11 @@ DetectionMetrics evaluateDetections(
         {
             matched[bestIndex] = true;
             ++metrics.truePositives;
+
+            if (predictedLabels[detectionIndex] == groundTruth[bestIndex].label)
+            {
+                ++metrics.correctLabels;
+            }
         }
     }
 
@@ -120,6 +325,9 @@ DetectionMetrics evaluateDetections(
     metrics.f1 = (metrics.precision + metrics.recall) > 0.0
         ? 2.0 * metrics.precision * metrics.recall / (metrics.precision + metrics.recall)
         : 0.0;
+    metrics.recognitionAccuracy = (metrics.truePositives > 0)
+        ? static_cast<double>(metrics.correctLabels) / metrics.truePositives
+        : 0.0;
 
     return metrics;
 }
@@ -133,12 +341,14 @@ void printDetectionMetrics(const std::string& imageName, const DetectionMetrics&
     std::cout << "  Precision: " << metrics.precision << std::endl;
     std::cout << "  Recall: " << metrics.recall << std::endl;
     std::cout << "  F1-score: " << metrics.f1 << std::endl;
+    std::cout << "  Recognition accuracy: " << metrics.recognitionAccuracy << std::endl;
 }
 }
 
 void MyApplication()
 {
     const std::string groundTruthPath = "data/ground_truth/ball_locations.csv";
+    const std::string referenceImagePath = "data/images/AllBalls.jpeg";
     const std::vector<std::string> imageNames = {
         "Table1.jpeg",
         "Table2.jpeg",
@@ -147,6 +357,13 @@ void MyApplication()
         "Table5.jpeg",
         "Table6.jpeg"
     };
+
+    const std::vector<ReferenceBall> referenceBalls = buildReferenceBalls(referenceImagePath);
+    if (referenceBalls.empty())
+    {
+        std::cerr << "Reference-ball histograms could not be built." << std::endl;
+        return;
+    }
 
     // Table corners in the original image, ordered top-left, top-right,
     // bottom-right, bottom-left. Coordinates are (column, row).
@@ -183,6 +400,7 @@ void MyApplication()
     int totalTruePositives = 0;
     int totalFalsePositives = 0;
     int totalFalseNegatives = 0;
+    int totalCorrectLabels = 0;
     int imageCount = 0;
 
     for (const std::string& imageName : imageNames)
@@ -309,33 +527,58 @@ void MyApplication()
             filteredCircles.push_back(circle);
         }
 
+        std::vector<cv::Vec3f> recognizedBalls;
+        std::vector<int> recognizedLabels;
+        recognizedBalls.reserve(filteredCircles.size());
+        recognizedLabels.reserve(filteredCircles.size());
+
+        for (const cv::Vec3f& circle : filteredCircles)
+        {
+            const cv::Point2f center(circle[0], circle[1]);
+            const ClassificationResult classification =
+                classifyBall(hsvImage, center, circle[2], referenceBalls);
+
+            if (classification.label < 0 || classification.distance > 0.65)
+            {
+                continue;
+            }
+
+            recognizedBalls.push_back(circle);
+            recognizedLabels.push_back(classification.label);
+        }
+
         cv::Mat detectionImage = warpedImage.clone();
-        for (size_t i = 0; i < filteredCircles.size(); ++i)
+        for (size_t i = 0; i < recognizedBalls.size(); ++i)
         {
             const cv::Point centerPoint(
-                static_cast<int>(std::lround(filteredCircles[i][0])),
-                static_cast<int>(std::lround(filteredCircles[i][1]))
+                static_cast<int>(std::lround(recognizedBalls[i][0])),
+                static_cast<int>(std::lround(recognizedBalls[i][1]))
             );
-            const int radius = static_cast<int>(std::lround(filteredCircles[i][2]));
+            const int radius = static_cast<int>(std::lround(recognizedBalls[i][2]));
+            const std::string labelText = (recognizedLabels[i] == 0)
+                ? "Cue"
+                : std::to_string(recognizedLabels[i]);
 
             cv::circle(detectionImage, centerPoint, radius, cv::Scalar(0, 0, 255), 2);
             cv::circle(detectionImage, centerPoint, 2, cv::Scalar(0, 255, 0), -1);
             cv::putText(
                 detectionImage,
-                std::to_string(i + 1),
-                centerPoint + cv::Point(-6, 5),
+                labelText,
+                centerPoint + cv::Point(-8, 5),
                 cv::FONT_HERSHEY_SIMPLEX,
-                0.45,
+                0.5,
                 cv::Scalar(255, 255, 255),
                 1,
                 cv::LINE_AA
             );
         }
 
-        std::cout << "Detected " << filteredCircles.size() << " balls in " << imageName << std::endl;
+        std::cout << "Detected " << filteredCircles.size() << " candidates in " << imageName
+                  << "; " << recognizedBalls.size() << " passed colour verification." << std::endl;
 
-        const std::vector<cv::Point2f> groundTruth = loadGroundTruth(groundTruthPath, imageName);
-        const DetectionMetrics metrics = evaluateDetections(filteredCircles, groundTruth, 21.5F);
+        const std::vector<GroundTruthBall> groundTruth = loadGroundTruth(groundTruthPath, imageName);
+        const DetectionMetrics metrics =
+            evaluateDetections(recognizedBalls, recognizedLabels, groundTruth, 21.5F);
         printDetectionMetrics(imageName, metrics);
 
         precisionSum += metrics.precision;
@@ -344,15 +587,19 @@ void MyApplication()
         totalTruePositives += metrics.truePositives;
         totalFalsePositives += metrics.falsePositives;
         totalFalseNegatives += metrics.falseNegatives;
+        totalCorrectLabels += metrics.correctLabels;
         ++imageCount;
 
         cv::imwrite("results/" + imageBase + "_mask.jpeg", feltMask);
         cv::imwrite("results/" + imageBase + "_edges.jpeg", blurredImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
-
     }
 
     const int divisor = (imageCount > 0) ? imageCount : 1;
+    const double recognitionAccuracy = (totalTruePositives > 0)
+        ? static_cast<double>(totalCorrectLabels) / totalTruePositives
+        : 0.0;
+
     std::cout << "Overall average metrics across " << imageCount << " images:" << std::endl;
     std::cout << "  Average precision: " << precisionSum / divisor << std::endl;
     std::cout << "  Average recall: " << recallSum / divisor << std::endl;
@@ -360,9 +607,7 @@ void MyApplication()
     std::cout << "  Total true positives: " << totalTruePositives << std::endl;
     std::cout << "  Total false positives: " << totalFalsePositives << std::endl;
     std::cout << "  Total false negatives: " << totalFalseNegatives << std::endl;
-
-    // TODO: Stage 2 - Recognise the detected balls (labels 1-15 and cue ball)
-    // using the reference image and the method taught in the module.
+    std::cout << "  Stage 2 recognition accuracy: " << recognitionAccuracy << std::endl;
 }
 
 #ifndef MYAPPLICATION_NO_MAIN
