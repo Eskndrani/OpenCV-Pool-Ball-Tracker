@@ -6,6 +6,7 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{subcaption}
+\usepackage{float}
 \usepackage{tcolorbox}
 \usepackage{fancyhdr}
 \usepackage{microtype}
@@ -52,7 +53,7 @@ Each input photograph is first mapped by a planar homography from the four measu
 
 To solve the problem of missing green balls, I initially hypothesised that isolating and boosting the RGB green channel by a factor of $1.5$, followed by adaptive Gaussian thresholding, would force the balls to pop against the felt. The adaptive threshold used a local block size of $15$ and a constant of $2$. This failed because boosting the green channel equally boosted the green table, and adaptive thresholding amplified the woven texture of the felt into severe noise. Figure~\ref{fig:greenboost} shows the original region and the green-boosted grayscale image, together with the resulting adaptive threshold map. The ball boundaries are washed out while the felt texture dominates the edge map.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{subfigure}[b]{0.58\textwidth}
 \centering
@@ -73,7 +74,7 @@ To solve the problem of missing green balls, I initially hypothesised that isola
 
 I then attempted to isolate the felt directly in HSV space with a fixed hue range of $35$--$85$, saturation range $40$--$255$, and value range $40$--$255$. This also failed for the green object balls, particularly balls~6 and~14, because their hue and saturation overlap almost completely with the green felt. Figure~\ref{fig:hsvfailure} shows a $100\times100$ region around the green ball and the resulting binary mask. In the mask, the green ball vanishes into the white felt instead of producing a distinct foreground blob. A single-channel lightness threshold produced the complementary failure: shadows fragmented the ball boundaries and the threshold could not separate dark balls from the table. Both results motivated a multi-channel approach.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{subfigure}[b]{0.42\textwidth}
 \centering
@@ -100,7 +101,7 @@ The lightness channel supplies the strong outer silhouette of each ball, while t
 
 Figure~\ref{fig:labedges} shows the rectified Table~4 image and the corresponding fused edge map used by the circular detector.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{subfigure}[b]{0.48\textwidth}
 \centering
@@ -151,7 +152,7 @@ Overall & 78 & 10 & 12 & 0.886 & 0.867 & 0.876 \\
 
 To differentiate striped from solid balls, I first attempted to use K-Means clustering with $K=2$ on the pixels inside each ball mask to extract two dominant colours, then compared those colours with the reference balls using Euclidean distance. This proved computationally heavy and unreliable because the visibility of the white stripe depends on the physical rotation of the ball. Figure~\ref{fig:kmeans} shows the result on a solid blue ball. The two clusters split the number and the specular reflections rather than producing a stable stripe-versus-solid descriptor.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.78\textwidth]{report_test_kmeans.jpeg}
 \caption{K-Means ($K=2$) applied to a solid blue ball. The clustering splits the number and reflections, not a rotationally stable stripe/solid feature.}
@@ -171,7 +172,7 @@ A detection whose weighted distance exceeds $0.80$ is rejected as a non-ball or 
 
 Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ball~10. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \begin{subfigure}[b]{0.235\textwidth}
 \centering
@@ -221,7 +222,7 @@ Overall & 55 & 78 & 0.705 \\
 \end{tabular}
 \end{table}
 
-\begin{figure}[htbp]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.80\textwidth]{report_table4_final.jpeg}
 \caption{Final labelled output for Table~4 after Stage~2 saturation-dominant classification.}
