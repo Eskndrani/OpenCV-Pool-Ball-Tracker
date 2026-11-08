@@ -424,10 +424,7 @@ void MyApplication()
 
         std::vector<cv::Mat> labChannels;
         cv::split(labImage, labChannels);
-        cv::Mat lChannel = labChannels[0];
-
-        cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
-        clahe->apply(lChannel, lChannel);
+        const cv::Mat lChannel = labChannels[0];
 
         cv::Mat blurredImage;
         cv::GaussianBlur(lChannel, blurredImage, cv::Size(5, 5), 1.5);
@@ -438,9 +435,9 @@ void MyApplication()
             houghCircles,
             cv::HOUGH_GRADIENT,
             1.0,
-            42.0,
-            130.0,
-            7.0,
+            40.0,
+            110.0,
+            6.0,
             19,
             24
         );
@@ -486,7 +483,7 @@ void MyApplication()
             const ClassificationResult classification =
                 classifyBall(hsvImage, center, circle[2], referenceBalls);
 
-            if (classification.label < 0 || classification.distance > 0.85)
+            if (classification.label < 0 || classification.distance > 0.80)
             {
                 continue;
             }
