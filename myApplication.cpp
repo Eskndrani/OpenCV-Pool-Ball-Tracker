@@ -589,7 +589,7 @@ void MyApplication()
             const ClassificationResult classification =
                 classifyBall(hsvImage, center, circle[2], referenceBalls);
 
-            if (classification.label < 0 || classification.distance > 0.80)
+            if (classification.label < 0 || classification.distance > 0.55)
             {
                 continue;
             }
