@@ -1,6 +1,7 @@
 #include <opencv2/opencv.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -542,7 +543,7 @@ void MyApplication()
             for (const cv::Vec3f& kept : nmsCircles)
             {
                 const cv::Point2f keptCenter(kept[0], kept[1]);
-                if (cv::norm(candidateCenter - keptCenter) < 32.0)
+                if (cv::norm(candidateCenter - keptCenter) < 40.0)
                 {
                     suppressed = true;
                     break;
@@ -641,6 +642,15 @@ void MyApplication()
         cv::imwrite("results/" + imageBase + "_3_colored_answers.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_labeled.jpeg", detectionImage);
+
+        std::string tableFinalBase = imageBase;
+        if (!tableFinalBase.empty())
+        {
+            tableFinalBase[0] = static_cast<char>(
+                std::tolower(static_cast<unsigned char>(tableFinalBase[0]))
+            );
+        }
+        cv::imwrite("results/" + tableFinalBase + "_final.jpeg", detectionImage);
 
         if (imageName == "Table4.jpeg")
         {

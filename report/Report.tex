@@ -124,7 +124,7 @@ The fused edge map is passed to the Hough Circle Transform with a minimum centre
 
 For each of the six pocket centres, I examined a $120\times120$ pixel region on the raw lightness channel and thresholded two complementary structures: the dark pocket holes at $L<35$ and the bright metallic brackets at $L>200$. The mid-gray pocket netting is not captured by either threshold, so I also extracted the combined LAB edge map in the same region and dilated it with a $15\times15$ circular kernel. The netting is a dense web of edges, so this dilation fuses it into a solid morphological block. The fused netting block was OR-ed with the L-extreme mask. The local mask was restricted to a $70$-pixel radius around the pocket centre so that a bright ball near a pocket would not be mistaken for a bracket, and the six local masks were combined and dilated with a $13\times13$ circular kernel to cover the immediate pocket lip. A Hough candidate is rejected only when its centre lies on this complete hole--bracket--netting mask. The $22$-pixel cushion exclusion remains active.
 
-Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $32$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $32$ pixels of a retained centre is permanently removed. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls.
+Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $40$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $40$ pixels of a retained centre is permanently removed. This threshold sits just below the $43$-pixel physical ball diameter. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls.
 
 Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the top-right pocket of Table~4. The old red circle reaches into the cue ball's neighbourhood, while the green mask covers the dark hole, bright bracket, and netting. The cue ball is therefore spared and is recovered by the final detector.
 
@@ -215,7 +215,7 @@ Overall & 83 & 12 & 7 & 0.874 & 0.922 & 0.897 \\
 
 \subsection{Stage 2: Recognition Results}
 
-Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $59$ of $83$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $71.1\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, including the recovered cue ball.
+Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $59$ of $83$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $71.1\%$. Figure~\ref{fig:table5final} shows the final labelled output for Table~5.
 
 \begin{table}[H]
 \centering
@@ -239,14 +239,14 @@ Overall & 59 & 83 & 0.711 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.66\textwidth]{report_table4_final.jpeg}
-\caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification.}
-\label{fig:table4final}
+\includegraphics[width=0.66\textwidth]{table5_final.jpeg}
+\caption{Final labelled output for Table~5 after dynamic pocket masking and Stage~2 classification.}
+\label{fig:table5final}
 \end{figure}
 
 \subsection{Error Analysis}
 
-The remaining Stage~1 errors are now dominated by two residual modes. Of the $12$ false positives, $3$ are cushion, rail, or netting artefacts and $9$ are near-ball offset responses. The edge-density netting mask reduced the cushion/rail/netting false-positive count from $14$ to $3$ by fusing the dense pocket web into the pocket mask. The physical NMS enforces the $32$-pixel impossibility constraint and removes any intersecting accumulator peaks; the remaining $9$ near-ball responses are offset arcs more than $32$ pixels from a retained centre, so they are not physical duplicates but secondary accumulator peaks. Of the $7$ false negatives, $5$ are balls whose centres still fall inside the $22$-pixel cushion margin or close to a dynamic pocket mask, and $2$ are balls under extreme shadow or very low local contrast. No false negatives remain in Tables~1--3; the residual misses are concentrated in Tables~4--6, where the balls are closest to the rails and pockets.
+The remaining Stage~1 errors are now dominated by two residual modes. Of the $12$ false positives, $3$ are cushion, rail, or netting artefacts and $9$ are near-ball offset responses. The edge-density netting mask reduced the cushion/rail/netting false-positive count from $14$ to $3$ by fusing the dense pocket web into the pocket mask. The physical NMS threshold was raised to $40$ pixels, just below the $43$-pixel ball diameter. Because circular detection already enforced a $40$-pixel minimum separation, this change did not further reduce the measured counts; no sub-$40$-pixel duplicate remains. The remaining $9$ near-ball responses are offset arcs more than $40$ pixels from a retained centre, so they are secondary accumulator peaks rather than physical duplicates. Of the $7$ false negatives, $5$ are balls whose centres still fall inside the $22$-pixel cushion margin or close to a dynamic pocket mask, and $2$ are balls under extreme shadow or very low local contrast. No false negatives remain in Tables~1--3; the residual misses are concentrated in Tables~4--6, where the balls are closest to the rails and pockets.
 
 Stage~2 also has a clear failure structure. Of the $83$ true-positive detections, $59$ receive the correct label and $24$ are misclassified, giving an accuracy of $71.1\%$. Nine of the misclassifications are direct solid/stripe confusions of the same base colour (for example, a solid blue and a blue stripe). The remaining fifteen are broader histogram-overlap confusions between different colours, especially low-saturation balls and balls whose visible stripe or number changes the hue and saturation distribution. The saturation weighting improves the stripe/solid separation, but a global histogram still discards the spatial arrangement of the stripe and number, so a rotated stripe can resemble a different solid ball.
 
