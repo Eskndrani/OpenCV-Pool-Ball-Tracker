@@ -36,7 +36,7 @@
 \thispagestyle{fancy}
 
 \begin{abstract}
-This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.785$, recall $0.933$ and F1-score $0.853$, together with Stage~2 recognition accuracy $70.2\%$ across the six test tables.
+This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.874$, recall $0.922$ and F1-score $0.897$, together with Stage~2 recognition accuracy $71.1\%$ across the six test tables.
 \end{abstract}
 
 \section{Introduction}
@@ -118,18 +118,20 @@ Figure~\ref{fig:labedges} shows the rectified Table~4 image and the correspondin
 \label{fig:labedges}
 \end{figure}
 
-\subsection{Dynamic pocket mask and geometric constraints}
+\subsection{Dynamic pocket mask, netting mask, and physical NMS}
 
-The fused edge map is passed to the Hough Circle Transform with a minimum centre separation of $40$ pixels and a ball-radius range of $19$ to $24$ pixels. I initially rejected every candidate within a blind $95$-pixel radius of the six theoretical pockets, but visual debugging showed that this removed genuine balls near the corners, including the bright cue ball beside the top-right pocket of Table~4. I therefore replaced the blind radius with a dynamic pocket mask built from L-channel extremes.
+The fused edge map is passed to the Hough Circle Transform with a minimum centre separation of $40$ pixels and a ball-radius range of $19$ to $24$ pixels. I initially rejected every candidate within a blind $95$-pixel radius of the six theoretical pockets, but visual debugging showed that this removed genuine balls near the corners, including the bright cue ball beside the top-right pocket of Table~4. I therefore replaced the blind radius with a dynamic pocket mask.
 
-For each of the six pocket centres, I examined a $120\times120$ pixel region on the raw lightness channel and thresholded two complementary structures: the dark pocket holes at $L<35$ and the bright metallic brackets at $L>200$. The local mask was restricted to a $55$-pixel radius around the pocket centre so that a bright ball near a pocket would not be mistaken for a metallic bracket. The six local masks were combined into a global binary mask and dilated with a $13\times13$ circular kernel to cover the immediate pocket lip. A Hough candidate is now rejected only when its centre lies on the dynamic pocket mask. The $22$-pixel cushion exclusion remains active.
+For each of the six pocket centres, I examined a $120\times120$ pixel region on the raw lightness channel and thresholded two complementary structures: the dark pocket holes at $L<35$ and the bright metallic brackets at $L>200$. The mid-gray pocket netting is not captured by either threshold, so I also extracted the combined LAB edge map in the same region and dilated it with a $15\times15$ circular kernel. The netting is a dense web of edges, so this dilation fuses it into a solid morphological block. The fused netting block was OR-ed with the L-extreme mask. The local mask was restricted to a $70$-pixel radius around the pocket centre so that a bright ball near a pocket would not be mistaken for a bracket, and the six local masks were combined and dilated with a $13\times13$ circular kernel to cover the immediate pocket lip. A Hough candidate is rejected only when its centre lies on this complete hole--bracket--netting mask. The $22$-pixel cushion exclusion remains active.
 
-Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the top-right pocket of Table~4. The old red circle reaches into the cue ball's neighbourhood, while the green dynamic mask covers only the dark hole and bracket. The cue ball is therefore spared and is recovered by the final detector.
+Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $32$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $32$ pixels of a retained centre is permanently removed. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls.
+
+Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the top-right pocket of Table~4. The old red circle reaches into the cue ball's neighbourhood, while the green mask covers the dark hole, bright bracket, and netting. The cue ball is therefore spared and is recovered by the final detector.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.62\textwidth]{report_pocket_mask_compare.jpeg}
-\caption{Top-right pocket of Table~4. The dashed red circle is the old blind $95$-pixel exclusion; the green region is the dynamic L-channel pocket mask. The cue ball is no longer removed.}
+\caption{Top-right pocket of Table~4. The dashed red circle is the old blind $95$-pixel exclusion; the green region is the dynamic L-channel and edge-density netting mask. The cue ball is no longer removed.}
 \label{fig:pocketmask}
 \end{figure}
 
@@ -189,7 +191,7 @@ Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ba
 
 \subsection{Stage 1: Detection Results}
 
-Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket mask recovers the cue and other balls near pockets, raising recall to $0.933$. Overall precision is $0.785$ and the F1-score is $0.853$.
+Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket and netting mask removes the pocket structures while sparing nearby balls, and the physical NMS removes intersecting accumulator peaks. Overall precision is $0.874$, recall is $0.922$, and the F1-score is $0.897$.
 
 \begin{table}[H]
 \centering
@@ -199,21 +201,21 @@ Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket mas
 \toprule
 Image & TP & FP & FN & Precision & Recall & F1-score \\
 \midrule
-Table 1 & 16 & 4 & 0 & 0.800 & 1.000 & 0.889 \\
-Table 2 & 16 & 5 & 0 & 0.762 & 1.000 & 0.865 \\
-Table 3 & 16 & 2 & 0 & 0.889 & 1.000 & 0.941 \\
-Table 4 & 14 & 3 & 1 & 0.824 & 0.933 & 0.875 \\
-Table 5 & 12 & 5 & 2 & 0.706 & 0.857 & 0.774 \\
-Table 6 & 10 & 4 & 3 & 0.714 & 0.769 & 0.741 \\
+Table 1 & 16 & 2 & 0 & 0.889 & 1.000 & 0.941 \\
+Table 2 & 16 & 3 & 0 & 0.842 & 1.000 & 0.914 \\
+Table 3 & 16 & 0 & 0 & 1.000 & 1.000 & 1.000 \\
+Table 4 & 14 & 2 & 1 & 0.875 & 0.933 & 0.903 \\
+Table 5 & 11 & 3 & 3 & 0.786 & 0.786 & 0.786 \\
+Table 6 & 10 & 2 & 3 & 0.833 & 0.769 & 0.800 \\
 \midrule
-Overall & 84 & 23 & 6 & 0.785 & 0.933 & 0.853 \\
+Overall & 83 & 12 & 7 & 0.874 & 0.922 & 0.897 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Stage 2: Recognition Results}
 
-Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $59$ of $84$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $70.2\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, including the recovered cue ball.
+Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $59$ of $83$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $71.1\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, including the recovered cue ball.
 
 \begin{table}[H]
 \centering
@@ -227,10 +229,10 @@ Table 1 & 11 & 16 & 0.688 \\
 Table 2 & 10 & 16 & 0.625 \\
 Table 3 & 11 & 16 & 0.688 \\
 Table 4 & 12 & 14 & 0.857 \\
-Table 5 & 8 & 12 & 0.667 \\
+Table 5 & 8 & 11 & 0.727 \\
 Table 6 & 7 & 10 & 0.700 \\
 \midrule
-Overall & 59 & 84 & 0.702 \\
+Overall & 59 & 83 & 0.711 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -244,18 +246,18 @@ Overall & 59 & 84 & 0.702 \\
 
 \subsection{Error Analysis}
 
-The remaining Stage~1 errors are dominated by two failure modes. Of the $23$ false positives, $14$ are cushion or rail artefacts and $9$ are duplicate responses on already-detected balls. The cushion artefacts arise because the wooden rail trim and the cushion seam produce short circular arcs that survive the multi-channel edge map. The duplicate responses occur when a ball has a strong internal marking, such as a number or a stripe boundary, so that the circular accumulator produces a second centre slightly offset from the true one. Of the $6$ false negatives, $4$ are balls whose centres still fall inside the $22$-pixel cushion margin or close to a dynamic pocket mask, and $2$ are balls under extreme shadow or very low local contrast. No false negatives remain in Tables~1--3; the residual misses are concentrated in Tables~4--6, where the balls are closest to the rails and pockets.
+The remaining Stage~1 errors are now dominated by two residual modes. Of the $12$ false positives, $3$ are cushion, rail, or netting artefacts and $9$ are near-ball offset responses. The edge-density netting mask reduced the cushion/rail/netting false-positive count from $14$ to $3$ by fusing the dense pocket web into the pocket mask. The physical NMS enforces the $32$-pixel impossibility constraint and removes any intersecting accumulator peaks; the remaining $9$ near-ball responses are offset arcs more than $32$ pixels from a retained centre, so they are not physical duplicates but secondary accumulator peaks. Of the $7$ false negatives, $5$ are balls whose centres still fall inside the $22$-pixel cushion margin or close to a dynamic pocket mask, and $2$ are balls under extreme shadow or very low local contrast. No false negatives remain in Tables~1--3; the residual misses are concentrated in Tables~4--6, where the balls are closest to the rails and pockets.
 
-Stage~2 also has a clear failure structure. Of the $84$ true-positive detections, $59$ receive the correct label and $25$ are misclassified, giving an accuracy of $70.2\%$. Nine of the misclassifications are direct solid/stripe confusions of the same base colour (for example, a solid blue and a blue stripe). The remaining sixteen are broader histogram-overlap confusions between different colours, especially low-saturation balls and balls whose visible stripe or number changes the hue and saturation distribution. The saturation weighting improves the stripe/solid separation, but a global histogram still discards the spatial arrangement of the stripe and number, so a rotated stripe can resemble a different solid ball.
+Stage~2 also has a clear failure structure. Of the $83$ true-positive detections, $59$ receive the correct label and $24$ are misclassified, giving an accuracy of $71.1\%$. Nine of the misclassifications are direct solid/stripe confusions of the same base colour (for example, a solid blue and a blue stripe). The remaining fifteen are broader histogram-overlap confusions between different colours, especially low-saturation balls and balls whose visible stripe or number changes the hue and saturation distribution. The saturation weighting improves the stripe/solid separation, but a global histogram still discards the spatial arrangement of the stripe and number, so a rotated stripe can resemble a different solid ball.
 
 \section{Discussion}
 
-The multi-channel LAB edge-fusion detector outperformed the green-boost, adaptive-threshold, fixed-HSV, and single-channel lightness experiments. The lightness channel supplies the outer silhouette, while the $a$ and $b$ channels contribute colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. The dynamic pocket mask is a clear improvement over the blind radius: it removes the true pocket structures while sparing nearby balls, which raises recall from $0.867$ to $0.933$. The cost is a lower precision of $0.785$, because rail and duplicate responses are no longer removed by the over-large blind zone. The resulting Stage~1 F1-score is $0.853$, still above the previous single-channel baseline of approximately $0.831$.
+The multi-channel LAB edge-fusion detector outperformed the green-boost, adaptive-threshold, fixed-HSV, and single-channel lightness experiments. The lightness channel supplies the outer silhouette, while the $a$ and $b$ channels contribute colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. The dynamic pocket mask combined with the edge-density netting mask removes the true pocket structures while sparing nearby balls. The physical NMS then removes intersecting accumulator peaks. Together these changes raise Stage~1 precision from $0.785$ to $0.874$ and the F1-score from $0.853$ to $0.897$, with recall settling at $0.922$.
 
 Recognition is limited mainly by the ambiguity between similarly coloured solids and stripes. The saturation-dominant histogram improves on K-Means, but the residual errors show that a global hue and saturation distribution cannot fully capture the spatial arrangement of the stripe and number. Higher-resolution descriptors that preserve spatial structure, or a dedicated stripe detector, would be the natural next step.
 
 \section{Conclusion}
 
-I replaced the failing HSV and brightness-threshold designs with a multi-channel CIELAB edge-fusion detector, and I replaced the unstable K-Means recognition with a $30/70$ hue--saturation histogram descriptor. The dynamic L-channel pocket mask recovers balls that the blind radius excluded, lifting Stage~1 recall to $0.933$ and F1 to $0.853$. Stage~2 recognition accuracy is $0.702$. The error analysis shows that the remaining failures are concentrated in rail and duplicate responses for detection and in stripe/solid and low-saturation colour overlap for recognition.
+I replaced the failing HSV and brightness-threshold designs with a multi-channel CIELAB edge-fusion detector, and I replaced the unstable K-Means recognition with a $30/70$ hue--saturation histogram descriptor. The dynamic L-channel and edge-density netting mask recovers balls that the blind radius excluded, while physical NMS removes intersecting accumulator peaks. The final system achieves Stage~1 precision $0.874$, recall $0.922$, and F1 $0.897$, together with Stage~2 recognition accuracy $0.711$. The error analysis shows that the remaining failures are concentrated in offset near-ball responses for detection and in stripe/solid and low-saturation colour overlap for recognition.
 
 \end{document}

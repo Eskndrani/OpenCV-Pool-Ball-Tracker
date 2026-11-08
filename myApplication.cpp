@@ -455,46 +455,6 @@ void MyApplication()
         std::vector<cv::Mat> labChannels;
         cv::split(labImage, labChannels);
 
-        const cv::Mat rawLightness = labChannels[0];
-        cv::Mat pocketMask = cv::Mat::zeros(warpedImage.size(), CV_8U);
-        const int pocketRoiSize = 120;
-
-        for (const cv::Point2f& pocket : pocketCenters)
-        {
-            int x0 = std::max(0, cvRound(pocket.x) - pocketRoiSize / 2);
-            int y0 = std::max(0, cvRound(pocket.y) - pocketRoiSize / 2);
-            int x1 = std::min(warpedImage.cols, x0 + pocketRoiSize);
-            int y1 = std::min(warpedImage.rows, y0 + pocketRoiSize);
-            x0 = std::max(0, x1 - pocketRoiSize);
-            y0 = std::max(0, y1 - pocketRoiSize);
-
-            const cv::Rect pocketRoiRect(x0, y0, x1 - x0, y1 - y0);
-            const cv::Mat pocketRoi = rawLightness(pocketRoiRect);
-
-            cv::Mat darkMask;
-            cv::Mat brightMask;
-            cv::threshold(pocketRoi, darkMask, 35, 255, cv::THRESH_BINARY_INV);
-            cv::threshold(pocketRoi, brightMask, 200, 255, cv::THRESH_BINARY);
-
-            cv::Mat localPocketMask;
-            cv::bitwise_or(darkMask, brightMask, localPocketMask);
-
-            cv::Mat pocketDisk = cv::Mat::zeros(pocketRoi.size(), CV_8U);
-            cv::circle(
-                pocketDisk,
-                cv::Point(cvRound(pocket.x) - x0, cvRound(pocket.y) - y0),
-                55,
-                cv::Scalar(255),
-                cv::FILLED
-            );
-            cv::bitwise_and(localPocketMask, pocketDisk, localPocketMask);
-            localPocketMask.copyTo(pocketMask(pocketRoiRect));
-        }
-
-        const cv::Mat pocketKernel =
-            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(13, 13));
-        cv::dilate(pocketMask, pocketMask, pocketKernel);
-
         cv::Mat lChannel;
         cv::Mat aChannel;
         cv::Mat bChannel;
@@ -513,6 +473,53 @@ void MyApplication()
         cv::bitwise_or(lEdges, aEdges, combinedEdges);
         cv::bitwise_or(combinedEdges, bEdges, combinedEdges);
 
+        const cv::Mat rawLightness = labChannels[0];
+        cv::Mat pocketMask = cv::Mat::zeros(warpedImage.size(), CV_8U);
+        const int pocketRoiSize = 120;
+        const cv::Mat nettingKernel =
+            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(15, 15));
+
+        for (const cv::Point2f& pocket : pocketCenters)
+        {
+            int x0 = std::max(0, cvRound(pocket.x) - pocketRoiSize / 2);
+            int y0 = std::max(0, cvRound(pocket.y) - pocketRoiSize / 2);
+            int x1 = std::min(warpedImage.cols, x0 + pocketRoiSize);
+            int y1 = std::min(warpedImage.rows, y0 + pocketRoiSize);
+            x0 = std::max(0, x1 - pocketRoiSize);
+            y0 = std::max(0, y1 - pocketRoiSize);
+
+            const cv::Rect pocketRoiRect(x0, y0, x1 - x0, y1 - y0);
+            const cv::Mat pocketRoi = rawLightness(pocketRoiRect);
+            const cv::Mat pocketEdges = combinedEdges(pocketRoiRect);
+
+            cv::Mat darkMask;
+            cv::Mat brightMask;
+            cv::threshold(pocketRoi, darkMask, 35, 255, cv::THRESH_BINARY_INV);
+            cv::threshold(pocketRoi, brightMask, 200, 255, cv::THRESH_BINARY);
+
+            cv::Mat localPocketMask;
+            cv::bitwise_or(darkMask, brightMask, localPocketMask);
+
+            cv::Mat dilatedNetting;
+            cv::dilate(pocketEdges, dilatedNetting, nettingKernel);
+            cv::bitwise_or(localPocketMask, dilatedNetting, localPocketMask);
+
+            cv::Mat pocketDisk = cv::Mat::zeros(pocketRoi.size(), CV_8U);
+            cv::circle(
+                pocketDisk,
+                cv::Point(cvRound(pocket.x) - x0, cvRound(pocket.y) - y0),
+                70,
+                cv::Scalar(255),
+                cv::FILLED
+            );
+            cv::bitwise_and(localPocketMask, pocketDisk, localPocketMask);
+            localPocketMask.copyTo(pocketMask(pocketRoiRect));
+        }
+
+        const cv::Mat pocketKernel =
+            cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(13, 13));
+        cv::dilate(pocketMask, pocketMask, pocketKernel);
+
         std::vector<cv::Vec3f> houghCircles;
         cv::HoughCircles(
             combinedEdges,
@@ -526,10 +533,32 @@ void MyApplication()
             24
         );
 
-        std::vector<cv::Vec3f> filteredCircles;
-        filteredCircles.reserve(houghCircles.size());
-
+        std::vector<cv::Vec3f> nmsCircles;
+        nmsCircles.reserve(houghCircles.size());
         for (const cv::Vec3f& circle : houghCircles)
+        {
+            const cv::Point2f candidateCenter(circle[0], circle[1]);
+            bool suppressed = false;
+            for (const cv::Vec3f& kept : nmsCircles)
+            {
+                const cv::Point2f keptCenter(kept[0], kept[1]);
+                if (cv::norm(candidateCenter - keptCenter) < 32.0)
+                {
+                    suppressed = true;
+                    break;
+                }
+            }
+
+            if (!suppressed)
+            {
+                nmsCircles.push_back(circle);
+            }
+        }
+
+        std::vector<cv::Vec3f> filteredCircles;
+        filteredCircles.reserve(nmsCircles.size());
+
+        for (const cv::Vec3f& circle : nmsCircles)
         {
             const cv::Point2f center(circle[0], circle[1]);
             if (center.x < 22 || center.x > 1434 - 22 ||
