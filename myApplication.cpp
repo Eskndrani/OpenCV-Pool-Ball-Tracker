@@ -36,6 +36,8 @@ struct BallHistograms
 {
     cv::Mat hue;
     cv::Mat saturation;
+    double meanSaturation = 0.0;
+    double meanValue = 0.0;
 };
 
 struct ReferenceBall
@@ -158,7 +160,8 @@ BallHistograms calculateBallHistograms(const cv::Mat& hsvImage, const cv::Point2
     cv::normalize(hueHistogram, hueHistogram, 0, 255, cv::NORM_MINMAX);
     cv::normalize(saturationHistogram, saturationHistogram, 0, 255, cv::NORM_MINMAX);
 
-    return {hueHistogram, saturationHistogram};
+    const cv::Scalar maskedMean = cv::mean(roi, mask);
+    return {hueHistogram, saturationHistogram, maskedMean[1], maskedMean[2]};
 }
 
 std::vector<ReferenceBall> buildReferenceBalls(const std::string& referenceImagePath)
@@ -296,6 +299,14 @@ ClassificationResult classifyBall(
             result.distance = distance;
             result.label = reference.label;
         }
+    }
+
+    if (testHistograms.meanSaturation < 70.0 &&
+        testHistograms.meanValue > 230.0 &&
+        result.distance > 0.55)
+    {
+        result.label = 0;
+        result.distance = 0.0;
     }
 
     return result;
