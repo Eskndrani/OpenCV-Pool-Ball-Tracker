@@ -14,8 +14,9 @@
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt}
-
+\setlength{\emergencystretch}{1em}
 \setlength{\headheight}{14pt}
+
 \pagestyle{fancy}
 \fancyhf{}
 \fancyhead[L]{\small Pool Ball Detection and Recognition}
@@ -35,123 +36,99 @@
 \thispagestyle{fancy}
 
 \begin{abstract}
-This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. I first tested a green-channel boost followed by adaptive thresholding and a K-Means colour-clustering classifier; both approaches failed for distinct reasons and were discarded. I then adopted a multi-channel CIELAB edge-fusion detector and a saturation-dominant one-dimensional histogram classifier. The final pipeline achieves an overall Stage~1 precision of $0.886$, recall of $0.867$, and F1-score of $0.876$, with a Stage~2 recognition accuracy of $70.5\%$ across the six test tables.
+This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector followed by circular detection and geometric constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.886$, recall $0.867$ and F1-score $0.876$, together with Stage~2 recognition accuracy $70.5\%$ across the six test tables.
 \end{abstract}
 
 \section{Introduction}
 
-The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final pipeline through two explicit experimental failures followed by two redesigns. This report records that journey, including the visual evidence that motivated the final design choices.
+The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final system through a sequence of explicit experiments. Each failed design is documented because its failure explains the final architecture: Stage~1 became a colour-boundary fusion problem, while Stage~2 became a saturation-distribution problem.
 
-\section{Experimental Failures}
+\section{Stage 1: Ball Detection}
 
-\subsection{The Failure of HSV Thresholding}
+\subsection{Perspective rectification}
 
-To solve the problem of missing green balls, I initially hypothesised that isolating and boosting the RGB green channel by a factor of $1.5$, followed by adaptive Gaussian thresholding, would force the balls to pop against the felt. The adaptive threshold used a local block size of $15$ and a constant of $2$. This approach failed because boosting the green channel equally boosted the green table, and adaptive thresholding amplified the woven texture of the felt into severe noise. The resulting edge map contained many false circular responses and did not provide a stable basis for detection.
+Each input photograph is first mapped by a planar homography from the four measured cushion-to-cushion corners into a $1434\times683$ metric table frame. The destination dimensions match the physical $1434\,\mathrm{mm}\times683\,\mathrm{mm}$ playing area, so one transformed pixel corresponds to one millimetre. This metric frame is used by all later stages.
 
-I then attempted to isolate the felt directly in HSV space with a fixed hue range of $35$--$85$, saturation range $40$--$255$, and value range $40$--$255$. This also failed for the green object balls, particularly balls~6 and~14. Their hue and saturation overlap almost completely with the green felt, so the threshold classifies them as table rather than as separate objects. Figure~\ref{fig:hsvfailure} shows a $100\times100$ region around the green ball on the left and the resulting binary mask on the right. In the mask, the green ball vanishes into the white felt region instead of producing a distinct foreground blob.
+\subsection{Failed green-channel boost and adaptive thresholding}
+
+To solve the problem of missing green balls, I initially hypothesised that isolating and boosting the RGB green channel by a factor of $1.5$, followed by adaptive Gaussian thresholding, would force the balls to pop against the felt. The adaptive threshold used a local block size of $15$ and a constant of $2$. This failed because boosting the green channel equally boosted the green table, and adaptive thresholding amplified the woven texture of the felt into severe noise. Figure~\ref{fig:greenboost} shows the original region and the green-boosted grayscale image, together with the resulting adaptive threshold map. The ball boundaries are washed out while the felt texture dominates the edge map.
 
 \begin{figure}[htbp]
 \centering
-\begin{subfigure}[b]{0.48\textwidth}
+\begin{subfigure}[b]{0.58\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_test_green_boost.jpeg}
+\caption{Original region versus green-channel boost.}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.38\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_test_adaptive_thresh.jpeg}
+\caption{Adaptive Gaussian threshold map: severe felt texture noise.}
+\end{subfigure}
+\caption{The green-channel boost and adaptive-threshold experiment. The boosted image washes out ball features, and the threshold map is dominated by felt texture rather than ball boundaries.}
+\label{fig:greenboost}
+\end{figure}
+
+\subsection{Failed HSV and single-channel lightness thresholding}
+
+I then attempted to isolate the felt directly in HSV space with a fixed hue range of $35$--$85$, saturation range $40$--$255$, and value range $40$--$255$. This also failed for the green object balls, particularly balls~6 and~14, because their hue and saturation overlap almost completely with the green felt. Figure~\ref{fig:hsvfailure} shows a $100\times100$ region around the green ball and the resulting binary mask. In the mask, the green ball vanishes into the white felt instead of producing a distinct foreground blob. A single-channel lightness threshold produced the complementary failure: shadows fragmented the ball boundaries and the threshold could not separate dark balls from the table. Both results motivated a multi-channel approach.
+
+\begin{figure}[htbp]
+\centering
+\begin{subfigure}[b]{0.42\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_original.jpeg}
 \caption{Original region around the green ball.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.48\textwidth}
+\begin{subfigure}[b]{0.42\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_mask.jpeg}
-\caption{Fixed HSV threshold: the green ball is merged into the felt.}
+\caption{Fixed HSV threshold: the green ball merges into the felt.}
 \end{subfigure}
-\caption{Visual evidence for the failure of fixed HSV thresholding. The green ball and the green felt are not separable in hue--saturation space with static limits.}
+\caption{Visual evidence for the failure of fixed HSV thresholding. The green ball and the green felt are not separable with static hue and saturation limits.}
 \label{fig:hsvfailure}
 \end{figure}
 
-\subsection{The K-Means Colour-Clustering Attempt}
+\subsection{Successful multi-channel CIELAB edge fusion}
 
-To differentiate striped from solid balls, I first attempted to use K-Means clustering with $K=2$ on the pixels inside each ball mask to extract the two dominant colours, and then compared those colours with the reference balls using Euclidean distance. This proved computationally heavy and unreliable, because the visibility of the white stripe depends heavily on the physical rotation of the ball. A stripe may be almost hidden at one orientation and dominant at another, so two dominant colour clusters do not form a stable descriptor.
-
-\section{Final Pipeline}
-
-\subsection{Stage 1: Multi-Channel LAB Edge Fusion}
-
-I realised that the solution required looking at colour boundaries, not just brightness. I split the rectified image into the CIELAB colour space and applied Gaussian smoothing with a $5\times5$ kernel and a standard deviation of $1.2$ to all three channels. I then ran Canny edge detection independently on each channel. I used thresholds of $45$ and $95$ for the lightness channel $L$, and more sensitive thresholds of $35$ and $85$ for the chromatic channels $a$ and $b$. The three binary edge maps were combined with a logical OR to produce a highly robust gradient map that captured subtle colour shifts as well as luminance boundaries. This combined map was passed to the Hough Circle Transform with a minimum centre separation of $40$ pixels and a ball-radius range of $19$ to $24$ pixels. Figure~\ref{fig:table4edges} shows the combined edge map for Table~4, and Figure~\ref{fig:table4warped} shows the corresponding rectified table.
+I realised that the solution required looking at colour boundaries, not just brightness. I split the rectified image into the CIELAB colour space and applied Gaussian smoothing with a $5\times5$ kernel and a standard deviation of $1.2$ to all three channels. I then ran Canny edge detection independently on each channel. I used thresholds of $45$ and $95$ for the lightness channel $L$, and more sensitive thresholds of $35$ and $85$ for the chromatic channels $a$ and $b$. The three binary edge maps were combined with a logical OR to produce a highly robust gradient map that captured subtle colour shifts as well as luminance boundaries.
 
 \begin{tcolorbox}[colback=blue!4!white,colframe=blue!50!black,title=Key Idea: LAB Multi-Channel Edge Fusion]
 The lightness channel supplies the strong outer silhouette of each ball, while the chromatic channels supply the colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. Fusing the three edge maps produces a gradient image that is markedly more complete than any single-channel edge map.
 \end{tcolorbox}
 
-\begin{figure}[htbp]
-\centering
-\includegraphics[width=0.92\textwidth]{report_table4_warped.jpeg}
-\caption{Rectified Table~4 used for the Stage~1 experiments.}
-\label{fig:table4warped}
-\end{figure}
+Figure~\ref{fig:labedges} shows the rectified Table~4 image and the corresponding fused edge map used by the circular detector.
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{report_table4_edges.jpeg}
-\caption{Combined LAB multi-channel edge map for Table~4. The lightness and chromatic channels contribute complementary boundaries, including low-contrast edges of balls hidden in shadow.}
-\label{fig:table4edges}
-\end{figure}
-
-\subsection{Geometric Constraints}
-
-Two geometric constraints remove candidates that cannot correspond to balls resting on the playing surface. First, a pocket constraint rejects any centre within $95$ pixels of the six theoretical pocket positions. Second, a cushion constraint rejects centres within $22$ pixels of the outer border, because a ball frozen to the cushion has its centre approximately one radius from the cushion and the wooden rails themselves generate non-felt edges. The minimum centre separation of $40$ pixels suppresses duplicate detections on the same ball while preserving genuinely adjacent balls in a tightly packed rack.
-
-\subsection{Stage 2: Saturation-Dominant Histograms}
-
-I pivoted from colour clustering to one-dimensional histograms. I extracted a hue histogram with $30$ bins and a saturation histogram with $32$ bins from a reduced circular sampling mask of radius $16$ pixels. The reduced mask prevents a slightly off-centre detection from admitting felt, shadow, or bounding-box corner pixels into the descriptor. I then compared test histograms with the sixteen reference histograms using the Bhattacharyya distance.
-
-Because a white stripe drastically lowers a ball's average saturation regardless of rotation, I applied a custom weighting system: $30\%$ weight to hue, $70\%$ weight to saturation, and $0\%$ weight to brightness.
-
-\begin{tcolorbox}[colback=orange!4!white,colframe=orange!60!black,title=Saturation-Dominant Distance]
-\begin{equation}
-d = 0.30\,d_{\mathrm{hue}} + 0.70\,d_{\mathrm{sat}}.
-\end{equation}
-A detection whose weighted distance exceeds $0.80$ is rejected as a non-ball or as an unreliable observation.
-\end{tcolorbox}
-
-Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ball~10. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
-
-\begin{figure}[htbp]
+\begin{subfigure}[b]{0.48\textwidth}
 \centering
-\begin{subfigure}[b]{0.40\textwidth}
-\centering
-\includegraphics[width=\linewidth]{crop_ball2.jpeg}
-\caption{Solid blue ball~2 crop.}
+\includegraphics[width=\linewidth]{report_table4_warped.jpeg}
+\caption{Rectified Table~4.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.56\textwidth}
+\begin{subfigure}[b]{0.48\textwidth}
 \centering
-\includegraphics[width=\linewidth]{report_hist_solid.jpeg}
-\caption{Solid ball~2 saturation histogram: high-saturation peak.}
+\includegraphics[width=\linewidth]{report_table4_edges.jpeg}
+\caption{Multi-channel LAB edge fusion map.}
 \end{subfigure}
-\\[1ex]
-\begin{subfigure}[b]{0.40\textwidth}
-\centering
-\includegraphics[width=\linewidth]{crop_ball10.jpeg}
-\caption{Striped blue ball~10 crop.}
-\end{subfigure}
-\hfill
-\begin{subfigure}[b]{0.56\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
-\caption{Striped ball~10 saturation histogram: large low-saturation peak.}
-\end{subfigure}
-\caption{The white stripe substantially shifts the saturation distribution toward the lower end of the spectrum, motivating the $70\%$ saturation weighting. The shift is independent of the ball's physical rotation.}
-\label{fig:sathist}
+\caption{Rectification and the successful fused edge map for Table~4.}
+\label{fig:labedges}
 \end{figure}
 
-\section{Results}
+\subsection{Circular detection and geometric constraints}
 
-\subsection{Stage 1: Detection Results}
+The fused edge map is passed to the Hough Circle Transform with a minimum centre separation of $40$ pixels and a ball-radius range of $19$ to $24$ pixels. Two geometric constraints remove candidates that cannot correspond to balls resting on the playing surface. A pocket constraint rejects centres within $95$ pixels of the six theoretical pocket positions. A cushion constraint rejects centres within $22$ pixels of the outer border, because a ball frozen to the cushion has its centre approximately one radius from the cushion and the wooden rails generate non-felt edges.
 
-Table~\ref{tab:stage1} reports the final Stage~1 metrics for all six test images. Overall precision is $0.886$, recall is $0.867$, and the F1-score is $0.876$. The pipeline finds all sixteen balls in Table~1 and all fifteen ground-truth balls in Table~3.
+\subsection{Stage 1 results}
+
+Table~\ref{tab:stage1} reports the final Stage~1 metrics. Overall precision is $0.886$, recall is $0.867$, and the F1-score is $0.876$.
 
 \begin{table}[htbp]
 \centering
-\caption{Final Stage~1 detection metrics after multi-channel LAB edge fusion.}
+\caption{Stage~1 ball-detection metrics after multi-channel LAB edge fusion.}
 \label{tab:stage1}
 \begin{tabular}{lcccccc}
 \toprule
@@ -169,7 +146,59 @@ Overall & 78 & 10 & 12 & 0.886 & 0.867 & 0.876 \\
 \end{tabular}
 \end{table}
 
-\subsection{Stage 2: Recognition Results}
+\section{Stage 2: Ball Recognition and Classification}
+
+\subsection{Failed K-Means clustering}
+
+To differentiate striped from solid balls, I first attempted to use K-Means clustering with $K=2$ on the pixels inside each ball mask to extract two dominant colours, then compared those colours with the reference balls using Euclidean distance. This proved computationally heavy and unreliable because the visibility of the white stripe depends on the physical rotation of the ball. Figure~\ref{fig:kmeans} shows the result on a solid blue ball. The two clusters split the number and the specular reflections rather than producing a stable stripe-versus-solid descriptor.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.78\textwidth]{report_test_kmeans.jpeg}
+\caption{K-Means ($K=2$) applied to a solid blue ball. The clustering splits the number and reflections, not a rotationally stable stripe/solid feature.}
+\label{fig:kmeans}
+\end{figure}
+
+\subsection{Successful saturation-dominant histograms}
+
+I pivoted to one-dimensional histograms. I extracted a hue histogram with $30$ bins and a saturation histogram with $32$ bins from a reduced circular sampling mask of radius $16$ pixels. The reduced mask prevents a slightly off-centre detection from admitting felt, shadow, or corner pixels into the descriptor. I then compared test histograms with the sixteen reference histograms using the Bhattacharyya distance. Because a white stripe drastically lowers a ball's average saturation regardless of rotation, I applied a custom weighting system: $30\%$ weight to hue, $70\%$ weight to saturation, and $0\%$ weight to brightness.
+
+\begin{tcolorbox}[colback=orange!4!white,colframe=orange!60!black,title=Saturation-Dominant Distance]
+\begin{equation}
+d = 0.30\,d_{\mathrm{hue}} + 0.70\,d_{\mathrm{sat}}.
+\end{equation}
+A detection whose weighted distance exceeds $0.80$ is rejected as a non-ball or as an unreliable observation.
+\end{tcolorbox}
+
+Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ball~10. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
+
+\begin{figure}[htbp]
+\centering
+\begin{subfigure}[b]{0.235\textwidth}
+\centering
+\includegraphics[width=\linewidth]{crop_ball2.jpeg}
+\caption{Ball~2 crop.}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.235\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_hist_solid.jpeg}
+\caption{Solid histogram.}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.235\textwidth}
+\centering
+\includegraphics[width=\linewidth]{crop_ball10.jpeg}
+\caption{Ball~10 crop.}
+\end{subfigure}\hfill
+\begin{subfigure}[b]{0.235\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
+\caption{Striped histogram.}
+\end{subfigure}
+\caption{Solid versus striped blue balls and their saturation histograms. The white stripe shifts the striped ball's distribution strongly toward the low-saturation end, motivating the $70\%$ saturation weighting.}
+\label{fig:sathist}
+\end{figure}
+
+\subsection{Stage 2 results}
 
 Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $55$ of $78$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $70.5\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4.
 
@@ -195,19 +224,19 @@ Overall & 55 & 78 & 0.705 \\
 
 \begin{figure}[htbp]
 \centering
-\includegraphics[width=0.92\textwidth]{report_table4_final.jpeg}
+\includegraphics[width=0.80\textwidth]{report_table4_final.jpeg}
 \caption{Final labelled output for Table~4 after Stage~2 saturation-dominant classification.}
 \label{fig:table4final}
 \end{figure}
 
-\subsection{Discussion}
+\section{Discussion}
 
-The multi-channel LAB edge-fusion detector clearly outperformed the original single-channel approach and the template-matching alternatives. The lightness channel supplies the strong outer silhouette of each ball, while the $a$ and $b$ channels contribute the colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. The pocket and cushion constraints remove geometrically impossible responses, and the minimum centre separation removes duplicate detections. The resulting Stage~1 F1-score of $0.876$ exceeds the previous single-channel baseline of approximately $0.831$, and recall rises to $0.867$.
+The multi-channel LAB edge-fusion detector clearly outperformed the green-boost, adaptive-threshold, fixed-HSV, and single-channel lightness experiments. The lightness channel supplies the outer silhouette of each ball, while the $a$ and $b$ channels contribute colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. The pocket and cushion constraints remove geometrically impossible responses, and the minimum centre separation removes duplicate detections. The resulting Stage~1 F1-score of $0.876$ exceeds the previous single-channel baseline of approximately $0.831$, and recall rises to $0.867$.
 
-Recognition is limited mainly by the ambiguity between similarly coloured solids and stripes. The saturation-dominant histogram improves on the K-Means attempt, but residual errors on Tables~1, 2, 5, and~6 show that a global hue and saturation distribution still cannot fully capture the spatial arrangement of the stripe and number. Higher-resolution descriptors that preserve spatial structure, or a dedicated stripe detector, would be the natural next step.
+Recognition is limited mainly by the ambiguity between similarly coloured solids and stripes. The saturation-dominant histogram improves on K-Means, but residual errors on Tables~1, 2, 5, and~6 show that a global hue and saturation distribution still cannot fully capture the spatial arrangement of the stripe and number. Higher-resolution descriptors that preserve spatial structure, or a dedicated stripe detector, would be the natural next step.
 
 \section{Conclusion}
 
-I replaced the failing HSV thresholding design with a multi-channel CIELAB edge-fusion detector, and I replaced the unstable K-Means recognition with a $30/70$ hue--saturation histogram descriptor. The final system achieves Stage~1 precision $0.886$, recall $0.867$, and F1 $0.876$, together with Stage~2 recognition accuracy $0.705$. The experiment confirms that colour-boundary fusion is more robust than static hue thresholding for this dataset, and that saturation is a more reliable cue than hue for distinguishing striped from solid balls.
+I replaced the failing HSV and brightness-threshold designs with a multi-channel CIELAB edge-fusion detector, and I replaced the unstable K-Means recognition with a $30/70$ hue--saturation histogram descriptor. The final system achieves Stage~1 precision $0.886$, recall $0.867$, and F1 $0.876$, together with Stage~2 recognition accuracy $0.705$. The experiment confirms that colour-boundary fusion is more robust than static colour thresholding for this dataset, and that saturation is a more reliable cue than hue for distinguishing striped from solid balls.
 
 \end{document}
