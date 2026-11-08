@@ -31,10 +31,16 @@ struct GroundTruthBall
     int label = -1;
 };
 
+struct BallHistograms
+{
+    cv::Mat hue;
+    cv::Mat saturation;
+};
+
 struct ReferenceBall
 {
     int label = -1;
-    cv::Mat histogram;
+    BallHistograms histograms;
 };
 
 struct ClassificationResult
@@ -94,7 +100,7 @@ std::vector<GroundTruthBall> loadGroundTruth(const std::string& csvPath, const s
     return groundTruth;
 }
 
-cv::Mat calculateBallHistogram(const cv::Mat& hsvImage, const cv::Point2f& center, float radius)
+BallHistograms calculateBallHistograms(const cv::Mat& hsvImage, const cv::Point2f& center, float radius)
 {
     const int left = std::max(0, cvRound(center.x - radius));
     const int top = std::max(0, cvRound(center.y - radius));
@@ -113,27 +119,45 @@ cv::Mat calculateBallHistogram(const cv::Mat& hsvImage, const cv::Point2f& cente
         cv::FILLED
     );
 
-    int histogramSize[] = {30, 32};
+    int hueSize[] = {30};
+    int saturationSize[] = {32};
     float hueRange[] = {0, 180};
     float saturationRange[] = {0, 256};
-    const float* histogramRanges[] = {hueRange, saturationRange};
-    int histogramChannels[] = {0, 1};
+    const float* hueRanges[] = {hueRange};
+    const float* saturationRanges[] = {saturationRange};
+    int hueChannel[] = {0};
+    int saturationChannel[] = {1};
 
-    cv::Mat histogram;
+    cv::Mat hueHistogram;
+    cv::Mat saturationHistogram;
     cv::calcHist(
         &roi,
         1,
-        histogramChannels,
+        hueChannel,
         mask,
-        histogram,
-        2,
-        histogramSize,
-        histogramRanges,
+        hueHistogram,
+        1,
+        hueSize,
+        hueRanges,
         true,
         false
     );
-    cv::normalize(histogram, histogram, 0, 255, cv::NORM_MINMAX);
-    return histogram;
+    cv::calcHist(
+        &roi,
+        1,
+        saturationChannel,
+        mask,
+        saturationHistogram,
+        1,
+        saturationSize,
+        saturationRanges,
+        true,
+        false
+    );
+    cv::normalize(hueHistogram, hueHistogram, 0, 255, cv::NORM_MINMAX);
+    cv::normalize(saturationHistogram, saturationHistogram, 0, 255, cv::NORM_MINMAX);
+
+    return {hueHistogram, saturationHistogram};
 }
 
 std::vector<ReferenceBall> buildReferenceBalls(const std::string& referenceImagePath)
@@ -220,12 +244,12 @@ std::vector<ReferenceBall> buildReferenceBalls(const std::string& referenceImage
 
     const auto addReference = [&](int label, const cv::Vec3f& circle)
     {
-        const cv::Mat histogram = calculateBallHistogram(
+        const BallHistograms histograms = calculateBallHistograms(
             hsvImage,
             cv::Point2f(circle[0], circle[1]),
             circle[2]
         );
-        references.push_back({label, histogram});
+        references.push_back({label, histograms});
     };
 
     addReference(0, referenceCircles[cueIndex]);
@@ -250,15 +274,21 @@ ClassificationResult classifyBall(
     const std::vector<ReferenceBall>& references)
 {
     ClassificationResult result;
-    const cv::Mat testHistogram = calculateBallHistogram(hsvImage, center, radius);
+    const BallHistograms testHistograms = calculateBallHistograms(hsvImage, center, radius);
 
     for (const ReferenceBall& reference : references)
     {
-        const double distance = cv::compareHist(
-            testHistogram,
-            reference.histogram,
+        const double hueDistance = cv::compareHist(
+            testHistograms.hue,
+            reference.histograms.hue,
             cv::HISTCMP_BHATTACHARYYA
         );
+        const double saturationDistance = cv::compareHist(
+            testHistograms.saturation,
+            reference.histograms.saturation,
+            cv::HISTCMP_BHATTACHARYYA
+        );
+        const double distance = 0.30 * hueDistance + 0.70 * saturationDistance;
 
         if (distance < result.distance)
         {
@@ -424,20 +454,34 @@ void MyApplication()
 
         std::vector<cv::Mat> labChannels;
         cv::split(labImage, labChannels);
-        const cv::Mat lChannel = labChannels[0];
 
-        cv::Mat blurredImage;
-        cv::GaussianBlur(lChannel, blurredImage, cv::Size(5, 5), 1.5);
+        cv::Mat lChannel;
+        cv::Mat aChannel;
+        cv::Mat bChannel;
+        cv::GaussianBlur(labChannels[0], lChannel, cv::Size(5, 5), 1.2);
+        cv::GaussianBlur(labChannels[1], aChannel, cv::Size(5, 5), 1.2);
+        cv::GaussianBlur(labChannels[2], bChannel, cv::Size(5, 5), 1.2);
+
+        cv::Mat lEdges;
+        cv::Mat aEdges;
+        cv::Mat bEdges;
+        cv::Canny(lChannel, lEdges, 45, 95);
+        cv::Canny(aChannel, aEdges, 35, 85);
+        cv::Canny(bChannel, bEdges, 35, 85);
+
+        cv::Mat combinedEdges;
+        cv::bitwise_or(lEdges, aEdges, combinedEdges);
+        cv::bitwise_or(combinedEdges, bEdges, combinedEdges);
 
         std::vector<cv::Vec3f> houghCircles;
         cv::HoughCircles(
-            blurredImage,
+            combinedEdges,
             houghCircles,
             cv::HOUGH_GRADIENT,
             1.0,
             40.0,
-            110.0,
-            6.0,
+            12.0,
+            8.0,
             19,
             24
         );
@@ -532,11 +576,17 @@ void MyApplication()
         totalCorrectLabels += metrics.correctLabels;
         ++imageCount;
 
-        cv::imwrite("results/" + imageBase + "_edges.jpeg", blurredImage);
-        cv::imwrite("results/" + imageBase + "_l_channel.jpeg", blurredImage);
+        cv::imwrite("results/" + imageBase + "_edges.jpeg", combinedEdges);
         cv::imwrite("results/" + imageBase + "_3_colored_answers.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_detections.jpeg", detectionImage);
         cv::imwrite("results/" + imageBase + "_labeled.jpeg", detectionImage);
+
+        if (imageName == "Table4.jpeg")
+        {
+            cv::imwrite("results/report_table4_warped.jpeg", warpedImage);
+            cv::imwrite("results/report_table4_edges.jpeg", combinedEdges);
+            cv::imwrite("results/report_table4_final.jpeg", detectionImage);
+        }
     }
 
     const double overallPrecision = (totalTruePositives + totalFalsePositives) > 0
