@@ -14,7 +14,7 @@
 \graphicspath{{../results/}{results/}}
 
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{3pt}
+\setlength{\parskip}{2pt}
 \setlength{\emergencystretch}{1em}
 \setlength{\headheight}{14pt}
 
@@ -55,13 +55,13 @@ To solve the problem of missing green balls, I initially hypothesised that isola
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.54\textwidth}
+\begin{subfigure}[b]{0.48\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_test_green_boost.jpeg}
 \caption{Original region versus green-channel boost.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.36\textwidth}
+\begin{subfigure}[b]{0.28\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_test_adaptive_thresh.jpeg}
 \caption{Adaptive Gaussian threshold map: severe felt texture noise.}
@@ -76,13 +76,13 @@ I then attempted to isolate the felt directly in HSV space with a fixed hue rang
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.32\textwidth}
+\begin{subfigure}[b]{0.28\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_original.jpeg}
 \caption{Original region around the green ball.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.32\textwidth}
+\begin{subfigure}[b]{0.28\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_mask.jpeg}
 \caption{Fixed HSV threshold: the green ball merges into the felt.}
@@ -103,13 +103,13 @@ Figure~\ref{fig:labedges} shows the rectified Table~4 image and the correspondin
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.44\textwidth}
+\begin{subfigure}[b]{0.40\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_table4_warped.jpeg}
 \caption{Rectified Table~4.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.44\textwidth}
+\begin{subfigure}[b]{0.40\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_table4_edges.jpeg}
 \caption{Multi-channel LAB edge fusion map.}
@@ -130,7 +130,7 @@ Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.55\textwidth]{report_pocket_mask_compare.jpeg}
+\includegraphics[width=0.48\textwidth]{report_pocket_mask_compare.jpeg}
 \caption{Top-right pocket of Table~4. The dashed red circle is the old blind $95$-pixel exclusion; the green region is the dynamic L-channel and edge-density netting mask. The cue ball is no longer removed.}
 \label{fig:pocketmask}
 \end{figure}
@@ -143,7 +143,7 @@ To differentiate striped from solid balls, I first attempted to use K-Means clus
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.56\textwidth]{report_test_kmeans.jpeg}
+\includegraphics[width=0.50\textwidth]{report_test_kmeans.jpeg}
 \caption{K-Means ($K=2$) applied to a solid blue ball. The clustering splits the number and reflections, not a rotationally stable stripe/solid feature.}
 \label{fig:kmeans}
 \end{figure}
@@ -165,22 +165,22 @@ Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ba
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.225\textwidth}
+\begin{subfigure}[b]{0.205\textwidth}
 \centering
 \includegraphics[width=\linewidth]{crop_ball2.jpeg}
 \caption{Ball~2 crop.}
 \end{subfigure}\hfill
-\begin{subfigure}[b]{0.225\textwidth}
+\begin{subfigure}[b]{0.205\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hist_solid.jpeg}
 \caption{Solid histogram.}
 \end{subfigure}\hfill
-\begin{subfigure}[b]{0.225\textwidth}
+\begin{subfigure}[b]{0.205\textwidth}
 \centering
 \includegraphics[width=\linewidth]{crop_ball10.jpeg}
 \caption{Ball~10 crop.}
 \end{subfigure}\hfill
-\begin{subfigure}[b]{0.225\textwidth}
+\begin{subfigure}[b]{0.205\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
 \caption{Striped histogram.}
@@ -241,16 +241,23 @@ Overall & 56 & 79 & 0.709 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.58\textwidth]{table5_final.jpeg}
+\includegraphics[width=0.52\textwidth]{table5_final.jpeg}
 \caption{Final labelled output for Table~5 after dynamic pocket masking and Stage~2 classification.}
 \label{fig:table5final}
 \end{figure}
 
 \subsection{Error Analysis}
 
-The tightened Stage~2 confidence filter had a dramatic effect on Stage~1 precision. Rail and cushion artifacts, which had previously appeared as weak matches to the green and purple balls, were completely eliminated: all $8$ remaining false positives are near-ball offset responses, and there are no rail, cushion, or netting artifacts in the final output. The physical NMS threshold of $40$ pixels, just below the $43$-pixel ball diameter, prevents any sub-$40$-pixel duplicate from surviving. The remaining $8$ near-ball responses are offset arcs more than $40$ pixels from a retained centre, so they are secondary accumulator peaks rather than physical duplicates; the Hough sweep confirmed that removing them by accumulator tuning would destroy recall. The cue gate recovered the cue ball that the histogram had rejected. After this recovery there are $11$ false negatives: $3$ arise from edge merging in tight racks, $5$ from candidates whose centres still fall inside the $22$-pixel cushion margin or close to a dynamic pocket mask, and $3$ from extreme shadow or very low local contrast. No false negatives remain in Table~3.
+Although the confidence filter removed the rail and cushion artifacts, visual inspection of the final outputs reveals three persistent, fundamental failure modes. These are not tuning errors that can be removed by another threshold sweep; they follow from perspective distortion, rotation variance, and the geometry of dense clusters.
 
-Stage~2 also has a clear failure structure. Of the $79$ true-positive detections, $56$ receive the correct label and $23$ are misclassified, giving an accuracy of $70.9\%$. Nine of the misclassifications are direct solid/stripe confusions of the same base colour (for example, a solid blue and a blue stripe). The remaining fourteen are broader histogram-overlap confusions between different colours, especially low-saturation balls and balls whose visible stripe or number changes the hue and saturation distribution. The saturation weighting improves the stripe/solid separation, but a global histogram still discards the spatial arrangement of the stripe and number, so a rotated stripe can resemble a different solid ball.
+\paragraph{Failure Mode 1: Elliptical Duplicates.}
+Perspective rectification does not preserve the circular shape of balls near the outer edges of the table. A ball close to a rail or corner is stretched into an ellipse. The Hough Transform searches for rigid circles, so on a sufficiently elongated ellipse it can fit two distinct smaller circles into opposite ends of the same physical ball. These two centres are typically more than $40$ pixels apart, so they bypass both the Hough minimum separation and the physical NMS. The final output then contains dual classifications of one ball; for example, the orange striped ball is sometimes reported as both a $5$ and a $13$. This is a failure of the circular model under perspective distortion, not a failure of the accumulator threshold.
+
+\paragraph{Failure Mode 2: Cue Ball Gate Vulnerability.}
+The gate based on mean saturation below $70$ and mean value above $230$ detects the cue ball reliably when the cue is unobstructed. It is, however, vulnerable to the physical rotation of striped balls. If a striped ball such as the purple $4$ or green $14$ rests with its white band facing the camera, the $16$-pixel centre region contains mostly white resin and therefore lacks saturation. The gate cannot distinguish this from the cue ball and fatally intercepts the detection as ball~$0$. The gate is therefore not rotation-invariant: its clean saturation gap was measured on the reference orientation, but a rotated stripe can enter the same low-saturation, high-value region.
+
+\paragraph{Failure Mode 3: Dense Racks and Boundary Blindspots.}
+Tightly packed balls in the triangular rack suffer from severe edge merging. The individual circular gradients overlap, so the fused edge map no longer provides the clean, isolated circular evidence that Hough requires; this produces consistent false negatives inside the rack. A second blindspot occurs at the extreme far-left edge of the table, where balls are repeatedly missed. Their centres lie close to the $22$-pixel cushion margin and, in some frames, close to the dynamic pocket mask, so the geometric constraints remove them even though they are legitimate balls. These two effects account for most of the remaining $11$ false negatives and cannot be fixed by a different accumulator threshold without sacrificing large numbers of true balls elsewhere.
 
 \section{Discussion}
 
@@ -260,6 +267,6 @@ Recognition is limited mainly by the ambiguity between similarly coloured solids
 
 \section{Conclusion}
 
-I replaced the failing HSV and brightness-threshold designs with a multi-channel CIELAB edge-fusion detector, and I replaced the unstable K-Means recognition with a $30/70$ hue--saturation histogram descriptor. The dynamic L-channel and edge-density netting mask recovers balls that the blind radius excluded, while physical NMS removes intersecting accumulator peaks. The final system achieves Stage~1 precision $0.908$, recall $0.878$, and F1 $0.893$, together with Stage~2 recognition accuracy $0.709$. The error analysis shows that rail and cushion artifacts are eliminated, while the remaining failures are concentrated in offset near-ball responses for detection and in stripe/solid and low-saturation colour overlap for recognition.
+Multi-channel LAB edge fusion, dynamic pocket and netting masking, and a cue-aware saturation classifier achieve Stage~1 precision $0.908$, recall $0.878$, and F1 $0.893$, with Stage~2 accuracy $0.709$. Remaining failures are elliptical duplicates, rotated-stripe cue-gate errors, and dense-rack or boundary misses.
 
 \end{document}

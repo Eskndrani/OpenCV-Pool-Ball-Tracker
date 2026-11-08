@@ -621,16 +621,16 @@ void MyApplication()
                 ? "Cue"
                 : std::to_string(recognizedLabels[i]);
 
-            cv::circle(detectionImage, centerPoint, radius, cv::Scalar(0, 0, 255), 2);
-            cv::circle(detectionImage, centerPoint, 2, cv::Scalar(0, 255, 0), -1);
+            cv::circle(detectionImage, centerPoint, radius, cv::Scalar(0, 0, 0), 2);
+            cv::circle(detectionImage, centerPoint, 2, cv::Scalar(0, 0, 0), -1);
             cv::putText(
                 detectionImage,
                 labelText,
                 centerPoint + cv::Point(-8, 5),
                 cv::FONT_HERSHEY_SIMPLEX,
-                0.5,
-                cv::Scalar(255, 255, 255),
-                1,
+                0.55,
+                cv::Scalar(0, 0, 0),
+                2,
                 cv::LINE_AA
             );
         }
