@@ -6,6 +6,8 @@
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{subcaption}
+\usepackage{tcolorbox}
+\usepackage{fancyhdr}
 \usepackage{microtype}
 
 \graphicspath{{../results/}{results/}}
@@ -13,7 +15,24 @@
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{6pt}
 
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small Pool Ball Detection and Recognition}
+\fancyhead[R]{\small M. H. Alaskandrani}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\vspace{-1.2cm}\textbf{Pool Ball Detection and Recognition}\\[0.35em]
+\large An Experimental Study of Colour Thresholding, LAB Edge Fusion, and Saturation-Dominant Histograms}
+\author{\textbf{Mahmoud Hatem Alaskandrani}\\[0.25em]
+\small The American University in Cairo / Trinity College Dublin}
+\date{\today}
+
 \begin{document}
+
+\maketitle
+\thispagestyle{fancy}
 
 \begin{abstract}
 This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. I first tested a green-channel boost followed by adaptive thresholding and a K-Means colour-clustering classifier; both approaches failed for distinct reasons and were discarded. I then adopted a multi-channel CIELAB edge-fusion detector and a saturation-dominant one-dimensional histogram classifier. The final pipeline achieves an overall Stage~1 precision of $0.886$, recall of $0.867$, and F1-score of $0.876$, with a Stage~2 recognition accuracy of $70.5\%$ across the six test tables.
@@ -58,6 +77,10 @@ To differentiate striped from solid balls, I first attempted to use K-Means clus
 
 I realised that the solution required looking at colour boundaries, not just brightness. I split the rectified image into the CIELAB colour space and applied Gaussian smoothing with a $5\times5$ kernel and a standard deviation of $1.2$ to all three channels. I then ran Canny edge detection independently on each channel. I used thresholds of $45$ and $95$ for the lightness channel $L$, and more sensitive thresholds of $35$ and $85$ for the chromatic channels $a$ and $b$. The three binary edge maps were combined with a logical OR to produce a highly robust gradient map that captured subtle colour shifts as well as luminance boundaries. This combined map was passed to the Hough Circle Transform with a minimum centre separation of $40$ pixels and a ball-radius range of $19$ to $24$ pixels. Figure~\ref{fig:table4edges} shows the combined edge map for Table~4, and Figure~\ref{fig:table4warped} shows the corresponding rectified table.
 
+\begin{tcolorbox}[colback=blue!4!white,colframe=blue!50!black,title=Key Idea: LAB Multi-Channel Edge Fusion]
+The lightness channel supplies the strong outer silhouette of each ball, while the chromatic channels supply the colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. Fusing the three edge maps produces a gradient image that is markedly more complete than any single-channel edge map.
+\end{tcolorbox}
+
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.92\textwidth]{report_table4_warped.jpeg}
@@ -80,26 +103,43 @@ Two geometric constraints remove candidates that cannot correspond to balls rest
 
 I pivoted from colour clustering to one-dimensional histograms. I extracted a hue histogram with $30$ bins and a saturation histogram with $32$ bins from a reduced circular sampling mask of radius $16$ pixels. The reduced mask prevents a slightly off-centre detection from admitting felt, shadow, or bounding-box corner pixels into the descriptor. I then compared test histograms with the sixteen reference histograms using the Bhattacharyya distance.
 
-Because a white stripe drastically lowers a ball's average saturation regardless of rotation, I applied a custom weighting system: $30\%$ weight to hue, $70\%$ weight to saturation, and $0\%$ weight to brightness. The final distance is
+Because a white stripe drastically lowers a ball's average saturation regardless of rotation, I applied a custom weighting system: $30\%$ weight to hue, $70\%$ weight to saturation, and $0\%$ weight to brightness.
+
+\begin{tcolorbox}[colback=orange!4!white,colframe=orange!60!black,title=Saturation-Dominant Distance]
 \begin{equation}
 d = 0.30\,d_{\mathrm{hue}} + 0.70\,d_{\mathrm{sat}}.
 \end{equation}
-A detection whose weighted distance exceeds $0.80$ is rejected as a non-ball or as an unreliable observation. Figure~\ref{fig:sathist} compares the saturation distributions of the solid blue ball~2 and the striped blue ball~10. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
+A detection whose weighted distance exceeds $0.80$ is rejected as a non-ball or as an unreliable observation.
+\end{tcolorbox}
+
+Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ball~10. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
 
 \begin{figure}[htbp]
 \centering
-\begin{subfigure}[b]{0.48\textwidth}
+\begin{subfigure}[b]{0.40\textwidth}
 \centering
-\includegraphics[width=\linewidth]{report_hist_solid.jpeg}
-\caption{Solid blue ball~2: high-saturation peak.}
+\includegraphics[width=\linewidth]{crop_ball2.jpeg}
+\caption{Solid blue ball~2 crop.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.48\textwidth}
+\begin{subfigure}[b]{0.56\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_hist_solid.jpeg}
+\caption{Solid ball~2 saturation histogram: high-saturation peak.}
+\end{subfigure}
+\\[1ex]
+\begin{subfigure}[b]{0.40\textwidth}
+\centering
+\includegraphics[width=\linewidth]{crop_ball10.jpeg}
+\caption{Striped blue ball~10 crop.}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.56\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
-\caption{Striped blue ball~10: large low-saturation peak.}
+\caption{Striped ball~10 saturation histogram: large low-saturation peak.}
 \end{subfigure}
-\caption{The white stripe substantially shifts the saturation distribution toward the lower end of the spectrum, motivating the $70\%$ saturation weighting.}
+\caption{The white stripe substantially shifts the saturation distribution toward the lower end of the spectrum, motivating the $70\%$ saturation weighting. The shift is independent of the ball's physical rotation.}
 \label{fig:sathist}
 \end{figure}
 
