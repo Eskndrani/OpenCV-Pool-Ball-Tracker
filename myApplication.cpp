@@ -51,6 +51,10 @@ struct ClassificationResult
 {
     int label = -1;
     double distance = 1e9;
+    bool cueGatePassed = false;
+    double cueMeanSaturation = 0.0;
+    int fallbackLabel = -1;
+    double fallbackDistance = 1e9;
 };
 
 std::vector<GroundTruthBall> loadGroundTruth(const std::string& csvPath, const std::string& imageName)
@@ -123,6 +127,15 @@ BallHistograms calculateBallHistograms(const cv::Mat& hsvImage, const cv::Point2
         cv::FILLED
     );
 
+    cv::Mat fullMask = cv::Mat::zeros(roi.size(), CV_8U);
+    cv::circle(
+        fullMask,
+        cv::Point(cvRound(center.x) - left, cvRound(center.y) - top),
+        cvRound(radius),
+        cv::Scalar(255),
+        cv::FILLED
+    );
+
     int hueSize[] = {30};
     int saturationSize[] = {32};
     float hueRange[] = {0, 180};
@@ -161,13 +174,13 @@ BallHistograms calculateBallHistograms(const cv::Mat& hsvImage, const cv::Point2
     cv::normalize(hueHistogram, hueHistogram, 0, 255, cv::NORM_MINMAX);
     cv::normalize(saturationHistogram, saturationHistogram, 0, 255, cv::NORM_MINMAX);
 
-    const cv::Scalar maskedMean = cv::mean(roi, mask);
+    const cv::Scalar maskedMean = cv::mean(roi, fullMask);
 
     cv::Mat saturationChannelImage;
     cv::extractChannel(roi, saturationChannelImage, 1);
     cv::Scalar meanSaturation;
     cv::Scalar stdDevSaturation;
-    cv::meanStdDev(saturationChannelImage, meanSaturation, stdDevSaturation, mask);
+    cv::meanStdDev(saturationChannelImage, meanSaturation, stdDevSaturation, fullMask);
 
     return {
         hueHistogram,
@@ -313,15 +326,20 @@ ClassificationResult classifyBall(
             result.distance = distance;
             result.label = reference.label;
         }
+
+        if (reference.label != 0 && distance < result.fallbackDistance)
+        {
+            result.fallbackDistance = distance;
+            result.fallbackLabel = reference.label;
+        }
     }
 
     if (testHistograms.meanValue > 230.0 &&
         testHistograms.meanSaturation < 70.0 &&
-        testHistograms.saturationStdDev < 35.0 &&
-        result.distance > 0.55)
+        testHistograms.saturationStdDev < 35.0)
     {
-        result.label = 0;
-        result.distance = 0.0;
+        result.cueGatePassed = true;
+        result.cueMeanSaturation = testHistograms.meanSaturation;
     }
 
     return result;
@@ -609,19 +627,49 @@ void MyApplication()
         recognizedBalls.reserve(filteredCircles.size());
         recognizedLabels.reserve(filteredCircles.size());
 
+        std::vector<ClassificationResult> classifications;
+        classifications.reserve(filteredCircles.size());
         for (const cv::Vec3f& circle : filteredCircles)
         {
             const cv::Point2f center(circle[0], circle[1]);
-            const ClassificationResult classification =
-                classifyBall(hsvImage, center, circle[2], referenceBalls);
+            classifications.push_back(
+                classifyBall(hsvImage, center, circle[2], referenceBalls)
+            );
+        }
 
-            if (classification.label < 0 || classification.distance > 0.55)
+        int cueIndex = -1;
+        double lowestCueSaturation = 1e9;
+        for (size_t i = 0; i < classifications.size(); ++i)
+        {
+            if (classifications[i].cueGatePassed &&
+                classifications[i].cueMeanSaturation < lowestCueSaturation)
+            {
+                lowestCueSaturation = classifications[i].cueMeanSaturation;
+                cueIndex = static_cast<int>(i);
+            }
+        }
+
+        if (cueIndex >= 0)
+        {
+            classifications[cueIndex].label = 0;
+            classifications[cueIndex].distance = 0.0;
+        }
+
+        for (size_t i = 0; i < filteredCircles.size(); ++i)
+        {
+            if (static_cast<int>(i) != cueIndex && classifications[i].label == 0)
+            {
+                classifications[i].label = classifications[i].fallbackLabel;
+                classifications[i].distance = classifications[i].fallbackDistance;
+            }
+
+            if (classifications[i].label < 0 || classifications[i].distance > 0.55)
             {
                 continue;
             }
 
-            recognizedBalls.push_back(circle);
-            recognizedLabels.push_back(classification.label);
+            recognizedBalls.push_back(filteredCircles[i]);
+            recognizedLabels.push_back(classifications[i].label);
         }
 
         cv::Mat detectionImage = warpedImage.clone();
