@@ -38,6 +38,8 @@ struct BallHistograms
     cv::Mat saturation;
     double meanSaturation = 0.0;
     double meanValue = 0.0;
+    double annulusMeanSaturation = 0.0;
+    double annulusMeanValue = 0.0;
 };
 
 struct ReferenceBall
@@ -161,7 +163,24 @@ BallHistograms calculateBallHistograms(const cv::Mat& hsvImage, const cv::Point2
     cv::normalize(saturationHistogram, saturationHistogram, 0, 255, cv::NORM_MINMAX);
 
     const cv::Scalar maskedMean = cv::mean(roi, mask);
-    return {hueHistogram, saturationHistogram, maskedMean[1], maskedMean[2]};
+
+    cv::Mat annulusMask = cv::Mat::zeros(roi.size(), CV_8U);
+    const cv::Point localCenter(
+        cvRound(center.x) - left,
+        cvRound(center.y) - top
+    );
+    cv::circle(annulusMask, localCenter, 18, cv::Scalar(255), cv::FILLED);
+    cv::circle(annulusMask, localCenter, 8, cv::Scalar(0), cv::FILLED);
+    const cv::Scalar annulusMean = cv::mean(roi, annulusMask);
+
+    return {
+        hueHistogram,
+        saturationHistogram,
+        maskedMean[1],
+        maskedMean[2],
+        annulusMean[1],
+        annulusMean[2]
+    };
 }
 
 std::vector<ReferenceBall> buildReferenceBalls(const std::string& referenceImagePath)
@@ -301,8 +320,8 @@ ClassificationResult classifyBall(
         }
     }
 
-    if (testHistograms.meanSaturation < 70.0 &&
-        testHistograms.meanValue > 230.0 &&
+    if (testHistograms.annulusMeanSaturation < 70.0 &&
+        testHistograms.annulusMeanValue > 230.0 &&
         result.distance > 0.55)
     {
         result.label = 0;
@@ -573,8 +592,8 @@ void MyApplication()
         for (const cv::Vec3f& circle : nmsCircles)
         {
             const cv::Point2f center(circle[0], circle[1]);
-            if (center.x < 22 || center.x > 1434 - 22 ||
-                center.y < 22 || center.y > 683 - 22)
+            if (center.x < 5 || center.x > 1434 - 5 ||
+                center.y < 5 || center.y > 683 - 5)
             {
                 continue;
             }
