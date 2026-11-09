@@ -36,9 +36,9 @@ struct BallHistograms
 {
     cv::Mat hue;
     cv::Mat saturation;
-    double meanSaturation = 0.0;
-    double meanValue = 0.0;
-    double saturationStdDev = 0.0;
+    double centerMeanSaturation = 0.0;
+    double centerMeanValue = 0.0;
+    double fullMeanSaturation = 0.0;
 };
 
 struct ReferenceBall
@@ -174,20 +174,15 @@ BallHistograms calculateBallHistograms(const cv::Mat& hsvImage, const cv::Point2
     cv::normalize(hueHistogram, hueHistogram, 0, 255, cv::NORM_MINMAX);
     cv::normalize(saturationHistogram, saturationHistogram, 0, 255, cv::NORM_MINMAX);
 
-    const cv::Scalar maskedMean = cv::mean(roi, fullMask);
-
-    cv::Mat saturationChannelImage;
-    cv::extractChannel(roi, saturationChannelImage, 1);
-    cv::Scalar meanSaturation;
-    cv::Scalar stdDevSaturation;
-    cv::meanStdDev(saturationChannelImage, meanSaturation, stdDevSaturation, fullMask);
+    const cv::Scalar centerMean = cv::mean(roi, mask);
+    const cv::Scalar fullMean = cv::mean(roi, fullMask);
 
     return {
         hueHistogram,
         saturationHistogram,
-        maskedMean[1],
-        maskedMean[2],
-        stdDevSaturation[0]
+        centerMean[1],
+        centerMean[2],
+        fullMean[1]
     };
 }
 
@@ -334,12 +329,12 @@ ClassificationResult classifyBall(
         }
     }
 
-    if (testHistograms.meanValue > 230.0 &&
-        testHistograms.meanSaturation < 70.0 &&
-        testHistograms.saturationStdDev < 35.0)
+    if (testHistograms.centerMeanValue > 235.0 &&
+        testHistograms.centerMeanSaturation < 75.0 &&
+        testHistograms.fullMeanSaturation < 76.0)
     {
         result.cueGatePassed = true;
-        result.cueMeanSaturation = testHistograms.meanSaturation;
+        result.cueMeanSaturation = testHistograms.fullMeanSaturation;
     }
 
     return result;
