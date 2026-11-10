@@ -21,6 +21,10 @@
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{0pt}
+\setlength{\abovedisplayskip}{2pt}
+\setlength{\belowdisplayskip}{2pt}
+\setlength{\abovedisplayshortskip}{1pt}
+\setlength{\belowdisplayshortskip}{1pt}
 \setlength{\emergencystretch}{1em}
 \hfuzz=2pt
 \setlength{\headheight}{14pt}
@@ -173,7 +177,17 @@ The solid blue ball peaks at high saturation, whereas the striped blue ball has 
 
 \subsection{Stage 1: Detection Results}
 
-Stage~1 metrics are computed by one-to-one spatial matching between the final drawn detections and the ground-truth centres, using a $21.5$-pixel tolerance. A detection is a True Positive only when it is matched to an unmatched ground-truth ball; each ground-truth ball may be matched at most once. Stage~2 recognition accuracy is evaluated on these matched detections. This ensures that the reported metrics correspond exactly to the visual outputs. Table~\ref{tab:stage1} reports the resulting metrics: overall precision is $0.911$, recall is $0.911$, and the F1-score is $0.911$.
+Stage~1 metrics use strict one-to-one greedy matching between the final drawn detections and the ground-truth centres. A detected centre $(x_{\mathrm{det}},y_{\mathrm{det}})$ is a True Positive if its Euclidean distance to an unmatched ground-truth centre $(x_{\mathrm{gt}},y_{\mathrm{gt}})$ satisfies
+\[
+\sqrt{(x_{\mathrm{det}}-x_{\mathrm{gt}})^2+(y_{\mathrm{det}}-y_{\mathrm{gt}})^2}\le 21.5\ \mathrm{px},
+\]
+where $21.5$ px is half the $43$ px ball diameter. Any detection left unmatched is a False Positive, and any ground-truth centre left unmatched is a False Negative. Precision, recall and F1 are
+\[
+\mathrm{Precision}=\frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FP}},\quad
+\mathrm{Recall}=\frac{\mathrm{TP}}{\mathrm{TP}+\mathrm{FN}},\quad
+\mathrm{F1}=2\cdot\frac{\mathrm{Precision}\cdot\mathrm{Recall}}{\mathrm{Precision}+\mathrm{Recall}}.
+\]
+Table~\ref{tab:stage1} reports the resulting metrics: overall precision is $0.911$, recall is $0.911$, and the F1-score is $0.911$.
 
 \begin{table}[H]
 \centering
@@ -197,7 +211,11 @@ Overall & 82 & 8 & 8 & 0.911 & 0.911 & 0.911 \\
 
 \subsection{Stage 2: Recognition Results}
 
-Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $63$ of $82$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $76.8\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.9\%$ Stage~2 recognition accuracy.
+Stage~2 recognition accuracy is evaluated strictly over the localized Stage~1 True Positives:
+\[
+\mathrm{Recognition\ Accuracy}=\frac{\text{correctly labelled Stage~1 TPs}}{\text{total Stage~1 TPs}}.
+\]
+A Stage~1 TP is counted as incorrect when its 30/70 weighted hue--saturation Bhattacharyya distance is closest to a different reference ball, or when the confidence filter ($d>0.55$) rejects it. Across all six tables, $63$ of $82$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $76.8\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.9\%$ Stage~2 recognition accuracy.
 
 \begin{table}[H]
 \centering
@@ -238,13 +256,13 @@ After restoring the $22$-pixel cushion margin, applying the split-mask cue gate,
 \end{figure}
 
 \paragraph{Failure Mode 1: Elliptical Perspective Distortion.}
-Planar homography rectifies the table plane, but balls near the perimeter are viewed obliquely and become ellipses in the metric frame. A circular Hough accumulator assumes a rigid circle, so its votes are smeared across an arc rather than concentrated at one centre. The detector may then fit two smaller circles into opposite ends of a single elongated ball, or it may miss the ball entirely if no peak reaches the voting threshold. These dual detections are often more than $40$ pixels apart, so they bypass both minimum separation and physical NMS. The orange striped ball, for example, is sometimes reported as both a $5$ and a $13$.
+Planar homography rectifies the table plane, but balls near the perimeter are viewed obliquely and become ellipses in the metric frame. A circular Hough accumulator assumes a rigid circle, so its votes are smeared across an arc rather than concentrated at one centre. The detector may then fit two smaller circles into opposite ends of a single elongated ball, or it may miss the ball entirely if no peak reaches the voting threshold. These dual detections are often more than $40$ pixels apart, so they bypass both minimum separation and physical NMS.
 
 \paragraph{Failure Mode 2: Cue Gate and Rotation Variance.}
-The split-mask cue gate uses centre brightness and whiteness on the $16$-pixel core, together with a full-$21$-pixel saturation limit, specifically to prevent a ``bullseye'' striped ball such as the $9$ or $14$ from hijacking the cue label when its white number circle faces the camera. The centre values are required to exceed $235$, the centre saturation to remain below $75$, and the full saturation to remain below $76$; the Highlander rule then keeps only the candidate with the lowest full saturation as the cue. This resolves the common rotation trap, but extreme shadow or severe specular reflection can still push a genuine cue outside the brightness or variance limits, or push a highly reflective stripe inside them.
+The split-mask cue gate uses centre brightness and whiteness on the $16$-pixel core, together with a full-$21$-pixel saturation limit, specifically to prevent a ``bullseye'' striped ball such as the $9$ or $14$ from hijacking the cue label when its white number circle faces the camera. The centre values are required to exceed $235$, the centre saturation to remain below $75$, and the full saturation to remain below $76$; the Highlander rule then keeps only the candidate with the lowest full saturation as the cue. This resolves the common rotation trap, although extreme shadow can still push a genuine cue outside these limits.
 
 \paragraph{Failure Mode 3: Dense-Rack Edge Merging.}
-Balls touching inside the triangular rack break the continuous circular Canny gradients that Hough requires. The fused edge map no longer contains isolated circular evidence, so accumulator peaks remain below the voting threshold at $param2=8.0$ and the corresponding balls are missed. Increasing the radius range or lowering the accumulator threshold recovered no additional true balls in the tolerance experiment and only increased false positives. The raw-frame recovery pass recovers some perimeter balls because their projections remain more circular before rectification, but it cannot separate the tightly packed rack. A morphological segmentation technique such as Watershed, which uses distance-transform minima to split touching objects, is the appropriate advanced alternative.
+Balls touching inside the triangular rack break the continuous circular Canny gradients that Hough requires. The fused edge map no longer contains isolated circular evidence, so accumulator peaks remain below the voting threshold at $param2=8.0$ and the corresponding balls are missed. Increasing the radius range or lowering the accumulator threshold recovered no additional true balls in the tolerance experiment and only increased false positives. The raw-frame recovery pass recovers some perimeter balls because their projections remain more circular before rectification, but it cannot separate the tightly packed rack. A morphological segmentation technique such as Watershed is the appropriate advanced alternative.
 
 \section{Discussion}
 
