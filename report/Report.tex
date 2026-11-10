@@ -47,12 +47,12 @@
 \thispagestyle{fancy}
 
 \begin{abstract}
-This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.867$, recall $0.944$ and F1-score $0.904$, together with Stage~2 recognition accuracy $72.9\%$ across the six test tables.
+This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 compared a green-channel boost, fixed HSV and single-channel lightness thresholding, and finally adopted multi-channel CIELAB edge fusion with a dynamic pocket mask, physical NMS, geometric cushion constraints, and a raw-frame Hough recovery path projected through the table homography. Stage~2 compared K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask, a $30/70$ saturation-dominant weighting, and a split-mask cue gate. Across the six test tables the final pipeline achieves Stage~1 precision $0.911$, recall $0.911$ and F1-score $0.911$, with Stage~2 recognition accuracy $76.8\%$ on correctly localised balls.
 \end{abstract}
 
 \section{Introduction}
 
-The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final system through a sequence of explicit experiments, and I retained a detailed error analysis because the remaining failures reveal the limits of the chosen detectors and descriptors. The project repository is available at \url{git@gitlab.scss.tcd.ie:csu33012-2627-group07/project07.git}.
+The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final system through a sequence of explicit experiments, and I retained a detailed error analysis because the remaining failures reveal the limits of the chosen detectors and descriptors. The project repository is available at \url{https://github.com/Eskndrani/OpenCV-Pool-Ball-Tracker}.
 
 \subsection{End-to-End Pipeline Overview}
 
@@ -60,7 +60,7 @@ Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses ind
 
 \begin{center}
 \textbf{End-to-End Pipeline}\\[0.3em]
-\hfuzz=2pt\hspace*{-2pt}\resizebox{0.64\linewidth}{!}{%
+\hfuzz=2pt\hspace*{-2pt}\resizebox{0.60\linewidth}{!}{%
 \begin{tikzpicture}[>=Stealth, node distance=0.35cm and 0.45cm,
  stage1/.style={draw, rounded corners, fill=blue!5, align=center, minimum height=1.0cm, text width=2.2cm, font=\scriptsize},
  stage2/.style={draw, rounded corners, fill=orange!8, align=center, minimum height=1.0cm, text width=2.2cm, font=\scriptsize}]
@@ -287,7 +287,7 @@ Overall & 63 & 82 & 0.768 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.82\linewidth]{report_table4_final.jpeg}
+\includegraphics[width=0.78\linewidth]{report_table4_final.jpeg}
 \caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification; Stage~2 recognition accuracy is $92.9\%$.}
 \label{fig:table4final}
 \end{figure}
@@ -295,48 +295,48 @@ Overall & 63 & 82 & 0.768 \\
 
 \subsection{Error Analysis}
 
-After restoring the $22$-pixel cushion margin, applying the split-mask cue gate, and fusing rectified with raw-frame candidates, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Figure~\ref{fig:table6failure} shows the Table~6 output used to inspect the remaining failures.
+After restoring the $22$-pixel cushion margin, applying the split-mask cue gate, and fusing rectified with raw-frame candidates, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. I re-audited the Table~6 overlay against these final metrics. The cue-gate and rotation failures from earlier drafts no longer appear: the cue and the $9$-ball are now assigned correctly, and raw-frame fusion recovered the perimeter balls that were previously missed. The remaining Table~6 errors are two shifted or duplicate detections near the left $6$ and the upper-right $7$/$8$ cluster, which account for the two false positives and two false negatives at the $21.5$ px matching radius. Figure~\ref{fig:table6failure} shows the overlay; dense-rack misses are visible in Table~1, while specular/stripe confusion affects Stage~2 labels across tables.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.74\linewidth]{table6_final.jpeg}
-\caption{Final labelled output for Table~6, showing the elliptical, cue-gate, and dense-rack failure modes discussed below.}
+\includegraphics[width=0.70\linewidth]{table6_final.jpeg}
+\caption{Final labelled output for Table~6. The remaining errors are elliptical centre shifts near the left $6$ and upper-right $7$/$8$ cluster, plus specular/stripe misclassification; the cue and $9$-ball are now resolved.}
 \label{fig:table6failure}
 \end{figure}
 \vspace{-4pt}
 
 \paragraph{Failure Mode 1: Elliptical Perspective Distortion.}
-In the final outputs I observed the consequences of elliptical perspective distortion: planar homography rectifies the table plane, but balls near the perimeter are viewed obliquely and become ellipses in the metric frame. A circular Hough accumulator assumes a rigid circle, so its votes are smeared across an arc rather than concentrated at one centre. The detector may then fit two smaller circles into opposite ends of a single elongated ball, or it may miss the ball entirely if no peak reaches the voting threshold. These dual detections are often more than $40$ pixels apart, so they bypass both minimum separation and physical NMS.
+In my final outputs I observed that planar homography rectifies the table plane but not the balls themselves. A ball near a boundary is viewed obliquely, so its projected outline is an ellipse whose axes are scaled anisotropically; after homography the recovered centre can shift by several pixels even when the ball is visually detected. In Table~6 this produced a shifted response near the left $6$ and a duplicate response around the upper-right $7$/$8$ cluster: each shifted centre fell just outside the $21.5$ px matching radius, so the true ball became a false negative and the shifted circle became a false positive. The same effect can split one elongated ball into two smaller Hough circles, and because these duplicates are often more than $40$ px apart they bypass both minimum separation and physical NMS.
 
-\paragraph{Failure Mode 2: Cue Gate and Rotation Variance.}
-I found that the split-mask cue gate uses centre brightness and whiteness on the $16$-pixel core, together with a full-$21$-pixel saturation limit, specifically to prevent a ``bullseye'' striped ball such as the $9$ or $14$ from hijacking the cue label when its white number circle faces the camera. The centre values are required to exceed $235$, the centre saturation to remain below $75$, and the full saturation to remain below $76$; the Highlander rule then keeps only the candidate with the lowest full saturation as the cue. This resolves the common rotation trap, although extreme shadow can still push a genuine cue outside these limits.
+\paragraph{Failure Mode 2: Dense-Rack Gradient Merging.}
+In my error analysis I observed that balls touching inside the tight triangular rack do not produce separate, sharp Canny boundaries. The outer edges of adjacent balls merge into one elongated gradient, so the circular Hough accumulator receives spread votes and the peak for an interior ball remains just below the voting threshold at $param2=8.0$. Lowering the threshold recovers some of these balls but also admits shadow arcs, so I kept the stricter setting. The raw-frame recovery pass cannot separate the same touching cluster because the projected centres remain close together. In Table~1 this is consistent with the three false negatives; a Watershed segmentation stage would be required to split the rack before circle fitting.
 
-\paragraph{Failure Mode 3: Dense-Rack Edge Merging.}
-I observed that balls touching inside the triangular rack break the continuous circular Canny gradients that Hough requires. The fused edge map no longer contains isolated circular evidence, so accumulator peaks remain below the voting threshold at $param2=8.0$ and the corresponding balls are missed. Increasing the radius range or lowering the accumulator threshold recovered no additional true balls in the tolerance experiment and only increased false positives. The raw-frame recovery pass recovers some perimeter balls because their projections remain more circular before rectification, but it cannot separate the tightly packed rack. A morphological segmentation technique such as Watershed is the appropriate advanced alternative.
+\paragraph{Failure Mode 3: Lighting and Specular Ambiguity.}
+In my final error analysis I observed that extreme specular highlights and deep shadows can move a ball's 1D hue or saturation peak far enough that its weighted Bhattacharyya distance exceeds $0.55$ or lands closest to the wrong reference. A strong highlight can make the white number circle dominate the saturation histogram, while a deep shadow can suppress the true paint peak; I saw this on Table~6, where the $12$ was pulled toward the cue/White reference and the $14$ toward the $6$ reference. The effect is sparse, so I kept the deterministic histogram classifier, but a specular-rejection mask or a normalised histogram would be the natural next refinement.
 
 \setlength{\parindent}{1em}
 \section{Discussion}
 
 The final Stage~1 precision is $0.911$, recall is $0.911$, and F1 is $0.911$; Stage~2 accuracy is $0.768$. I attribute this balance to two design choices. First, multi-channel LAB edge fusion gave the detector complementary evidence: the lightness channel supplied the strong outer silhouette, while the $a$ and $b$ channels recovered colour boundaries that would otherwise vanish in shadow. The cost of this fusion was a denser edge map, which produced offset accumulator arcs; the $40$-pixel physical NMS and the $22$-pixel cushion margin were therefore not optional refinements but necessary consequences of the richer edge evidence. I also found that the rectified-only detector consistently under-counted perimeter balls, which is why I added the raw-frame recovery path. That path recovered three true balls without adding false positives, but it also showed that a lower Hough threshold alone could not improve recall without a large precision penalty.
 
-For recognition, I found that 1D saturation histograms were substantially more robust than K-Means colour clustering. The $30/70$ hue--saturation weighting encodes the physical fact that a white stripe lowers saturation independently of rotation, while the split-mask cue gate prevents a bullseye $9$ or $14$ from hijacking the cue label when its white number circle faces the camera. The remaining limits are solid/stripe overlap, elliptical Hough responses, and dense-rack merging. I believe a spatial stripe descriptor and a Watershed segmentation pass are the most promising next steps, because both would add shape evidence that the current histogram-only Stage~2 cannot access.
+For recognition, I found that 1D saturation histograms were substantially more robust than K-Means colour clustering. The $30/70$ hue--saturation weighting encodes the physical fact that a white stripe lowers saturation independently of rotation, while the split-mask cue gate prevents a bullseye $9$ or $14$ from hijacking the cue label when its white number circle faces the camera. The remaining limits are solid/stripe overlap under specular highlights, elliptical boundary shifts, and dense-rack merging. I believe a spatial stripe descriptor and a Watershed segmentation pass are the most promising next steps, because both would add shape evidence that the current histogram-only Stage~2 cannot access.
 
 \section{Conclusion}
 
 In this project I implemented a two-stage pipeline that rectifies the table, detects candidate balls with multi-channel LAB edge fusion and Hough circles, recovers perimeter balls with a raw-frame secondary path, and classifies survivors with saturation-dominant histograms and a split-mask cue gate. The final ensemble achieves Stage~1 precision $0.911$, recall $0.911$, and F1 $0.911$, with Stage~2 recognition accuracy $0.768$.
 
-My experiments showed that LAB edge fusion was essential for shadowed and green balls, but the resulting edge density made the 40-pixel NMS and 22-pixel cushion margin necessary to suppress offset arcs. The raw-frame recovery pass added three true balls without increasing false positives. For recognition, the 30/70 hue--saturation histogram was more robust than K-Means, and the split-mask gate prevented bullseye stripes from hijacking the cue label. Residual errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack edge merging; a spatial stripe descriptor and Watershed segmentation are the natural next steps.
+My experiments showed that LAB edge fusion was essential for shadowed and green balls, but the resulting edge density made the 40-pixel NMS and 22-pixel cushion margin necessary to suppress offset arcs. The raw-frame recovery pass added three true balls without increasing false positives. For recognition, the 30/70 hue--saturation histogram was more robust than K-Means, and the split-mask gate prevented bullseye stripes from hijacking the cue label. Residual errors are elliptical centre shifts, specular/stripe histogram confusion, and dense-rack edge merging; a spatial stripe descriptor and Watershed segmentation are the natural next steps.
 
 \setlength{\parindent}{0pt}
 \section*{AI Usage Statement}
 
 {\small\linespread{0.96}\selectfont Generative AI tools (Google Gemini) were used during this project to assist with report text revisions, LaTeX/TikZ diagram formatting, and generating standalone C++ diagnostic scripts for parameter sweeps.
 
-\textbf{Prompt \& Response Example 1 (Parameter Sweep Script Generation):} \textit{User Prompt:} ``Write a standalone diagnostic script to sweep Hough param2 from 6.0 to 18.0 and measure its impact on edge-thinned LAB maps versus raw Canny maps.'' \textit{AI Response:} ``Generated a C++ benchmark function iterating through param2 values and logging True Positive / False Positive counts to stage2\_feature\_analysis.csv.''
+\textbf{Prompt \& Response Example 1 (Parameter Sweep Script):} \textit{User Prompt:} ``Write a diagnostic script to sweep Hough param2 from 6 to 18 and compare edge-thinned LAB maps with raw Canny maps.'' \textit{AI Response:} ``Generated a C++ benchmark logging TP/FP counts to stage2\_feature\_analysis.csv.''
 
-\textbf{Prompt \& Response Example 2 (Feature Exploration \& Gate Suggestion):} \textit{User Prompt:} ``The 1D Hue/Sat histogram classifies the 9-ball as the cue ball when its white number circle faces the camera. How can we separate them mathematically?'' \textit{AI Response:} ``Suggested implementing a dual-mask saturation/value check (Split-Mask Cue Gate) comparing the 16px center core against the 21px full ball radius to capture edge paint while ignoring felt shadows.''
+\textbf{Prompt \& Response Example 2 (Gate Suggestion):} \textit{User Prompt:} ``The 1D histogram labels the 9-ball as the cue when its white circle faces the camera. How can I separate them?'' \textit{AI Response:} ``Suggested a split-mask saturation/value check comparing the 16px centre with the 21px full ball.''
 
-\textbf{Prompt \& Response Example 3 (Diagnostic Script \& LaTeX Troubleshooting):} \textit{User Prompt:} ``The pipeline diagram TikZ block is wrapping text awkwardly and overflowing the margins. How do I format a two-stage flow cleanly?'' \textit{AI Response:} ``Provided structured TikZ matrix/node code with explicit node distance and rounded rectangle styles to align Stage 1 detection and Stage 2 recognition.''
+\textbf{Prompt \& Response Example 3 (LaTeX Troubleshooting):} \textit{User Prompt:} ``The pipeline TikZ block wraps awkwardly and overflows the margin. How do I format a two-stage flow?'' \textit{AI Response:} ``Provided matrix/node code with explicit node distances and rounded styles.''
 
 \vspace{-6pt}
 All core algorithmic implementations, experimental designs, parameter selections, and final data verification were conducted directly by the author.}\normalsize
