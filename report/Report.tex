@@ -1,6 +1,6 @@
 \documentclass[12pt]{article}
 
-\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[a4paper,top=0.9in,bottom=0.9in,left=1in,right=1in]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
@@ -17,7 +17,7 @@
 \graphicspath{{../results/}{results/}}
 
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{0.5pt}
+\setlength{\parskip}{0pt}
 \setlength{\emergencystretch}{1em}
 \hfuzz=2pt
 \setlength{\headheight}{14pt}
@@ -29,7 +29,7 @@
 \fancyfoot[C]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
-\title{\vspace{-1.2cm}\textbf{Pool Ball Detection and Recognition}}
+\title{\vspace{-1.6cm}\textbf{Pool Ball Detection and Recognition}}
 \author{\textbf{Mahmoud Hatem Alaskandrani}\\[0.25em]
 \small Trinity College Dublin / The American University in Cairo}
 \date{\today}
@@ -93,13 +93,13 @@ To solve the problem of missing green balls, I initially hypothesised that isola
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.48\textwidth}
+\begin{subfigure}[b]{0.44\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_test_green_boost.jpeg}
 \caption{Original region versus green-channel boost.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.28\textwidth}
+\begin{subfigure}[b]{0.24\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_test_adaptive_thresh.jpeg}
 \caption{Adaptive Gaussian threshold map: severe felt texture noise.}
@@ -114,13 +114,13 @@ I then attempted to isolate the felt directly in HSV space with a fixed hue rang
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.28\textwidth}
+\begin{subfigure}[b]{0.24\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_original.jpeg}
 \caption{Original region around the green ball.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.28\textwidth}
+\begin{subfigure}[b]{0.24\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_mask.jpeg}
 \caption{Fixed HSV threshold: the green ball merges into the felt.}
@@ -141,13 +141,13 @@ Figure~\ref{fig:labedges} shows the rectified Table~4 image and the correspondin
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.40\textwidth}
+\begin{subfigure}[b]{0.36\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_table4_warped.jpeg}
 \caption{Rectified Table~4.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.40\textwidth}
+\begin{subfigure}[b]{0.36\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_table4_edges.jpeg}
 \caption{Multi-channel LAB edge fusion map.}
@@ -168,7 +168,7 @@ Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.48\textwidth]{report_pocket_mask_compare.jpeg}
+\includegraphics[width=0.42\textwidth]{report_pocket_mask_compare.jpeg}
 \caption{Top-right pocket of Table~4. The dashed red circle is the old blind $95$-pixel exclusion; the green region is the dynamic L-channel and edge-density netting mask. The cue ball is no longer removed.}
 \label{fig:pocketmask}
 \end{figure}
@@ -198,22 +198,22 @@ Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ba
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.205\textwidth}
+\begin{subfigure}[b]{0.18\textwidth}
 \centering
 \includegraphics[width=\linewidth]{crop_ball2.jpeg}
 \caption{Ball~2 crop.}
 \end{subfigure}\hfill
-\begin{subfigure}[b]{0.205\textwidth}
+\begin{subfigure}[b]{0.18\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hist_solid.jpeg}
 \caption{Solid histogram.}
 \end{subfigure}\hfill
-\begin{subfigure}[b]{0.205\textwidth}
+\begin{subfigure}[b]{0.18\textwidth}
 \centering
 \includegraphics[width=\linewidth]{crop_ball10.jpeg}
 \caption{Ball~10 crop.}
 \end{subfigure}\hfill
-\begin{subfigure}[b]{0.205\textwidth}
+\begin{subfigure}[b]{0.18\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
 \caption{Striped histogram.}
@@ -274,19 +274,21 @@ Overall & 63 & 82 & 0.768 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.46\textwidth]{report_table4_final.jpeg}
+\includegraphics[width=0.38\textwidth]{report_table4_final.jpeg}
 \caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification; Stage~2 recognition accuracy is $92.9\%$.}
 \label{fig:table4final}
 \end{figure}
 
 \subsection{Error Analysis}
 
-\begin{wrapfigure}{r}{0.20\textwidth}
+\begin{wrapfigure}{r}{0.16\textwidth}
 \centering
 \includegraphics[width=\linewidth]{table5_final.jpeg}
+\caption{\footnotesize Table~5 final output.}
+\label{fig:table5failure}
 \end{wrapfigure}
 
-After restoring the $22$-pixel cushion margin, the split-mask cue gate, and ensemble candidate fusion, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Three failure modes remain.
+After restoring the $22$-pixel cushion margin, the split-mask cue gate, and ensemble candidate fusion, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Three failure modes remain. Figure~\ref{fig:table5failure} shows the corresponding Table~5 output.
 
 \paragraph{Failure Mode 1: Elliptical Duplicates.}
 Perspective warping stretches edge balls into ellipses. Hough can fit two smaller circles into opposite ends of one oval; the centres are often more than $40$ pixels apart, bypassing both minimum separation and NMS. The orange ball is sometimes reported as both a $5$ and a $13$.
@@ -299,10 +301,14 @@ Tightly packed balls suffer severe edge merging, so Hough loses the isolated gra
 
 \section{Discussion}
 
-The final Stage~1 precision is $0.911$, recall $0.911$, and F1 $0.911$; Stage~2 accuracy is $0.768$. Remaining limits are solid/stripe overlap and elliptical Hough responses, motivating spatial stripe detection and Watershed segmentation.
+The final Stage~1 precision, recall, and F1 are all $0.911$; Stage~2 accuracy is $0.768$. Remaining limits are solid/stripe overlap and elliptical Hough responses.
 
 \section{Conclusion}
 
-The pipeline achieves P $0.911$, R $0.911$, F1 $0.911$ and Stage~2 accuracy $0.768$; remaining errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
+The ensemble achieves P $0.911$, R $0.911$, F1 $0.911$ and Stage~2 accuracy $0.768$; residual errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
+
+\section*{AI Usage Statement}
+
+{\small Generative AI tools were utilized during this project strictly for revising the text of the final report, optimizing LaTeX formatting and TikZ diagram rendering, and brainstorming technical solutions (such as Non-Maximum Suppression parameters and LAB color space feature extractions). All empirical evaluations, code implementations, parameter tuning, and experimental validations were performed directly by the author.}\normalsize
 
 \end{document}
