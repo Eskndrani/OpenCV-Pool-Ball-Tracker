@@ -8,14 +8,18 @@
 \usepackage{subcaption}
 \usepackage{float}
 \usepackage{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta}
 \usepackage{fancyhdr}
+\usepackage{wrapfig}
 \usepackage{microtype}
 
 \graphicspath{{../results/}{results/}}
 
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{2pt}
+\setlength{\parskip}{0.5pt}
 \setlength{\emergencystretch}{1em}
+\hfuzz=2pt
 \setlength{\headheight}{14pt}
 
 \pagestyle{fancy}
@@ -42,6 +46,38 @@ This report documents the experimental development of a two-stage computer visio
 \section{Introduction}
 
 The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final system through a sequence of explicit experiments, and I retained a detailed error analysis because the remaining failures reveal the limits of the chosen detectors and descriptors.
+
+\subsection{End-to-End Pipeline Overview}
+
+Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses independent Canny edges from $L/a/b$, builds a pocket/netting mask, runs Hough with a $40$-pixel minimum separation, and applies cushion ($22$) and NMS ($40$) constraints. Stage~2 uses $30/32$-bin hue/saturation histograms, the split-mask cue gate, $30/70$ Bhattacharyya distance, and a $0.55$ rejection threshold (Figure~\ref{fig:pipeline}).
+
+\begin{center}
+\textbf{End-to-End Pipeline}\\[0.3em]
+\hfuzz=2pt\hspace*{-2pt}\resizebox{0.60\linewidth}{!}{%
+\begin{tikzpicture}[>=Stealth, node distance=0.22cm,
+ box1/.style={draw,rounded corners,align=center,font=\scriptsize,text width=1.75cm,minimum height=0.95cm,fill=blue!5},
+ box2/.style={draw,rounded corners,align=center,font=\scriptsize,text width=2.15cm,minimum height=0.95cm,fill=orange!8}]
+\node[box1] (warp) {Perspective warp\\$1434\times683$};
+\node[box1,right=of warp] (blur) {LAB split\\Gaussian $5\times5$};
+\node[box1,right=of blur] (canny) {Canny\\$L$ / $a$ / $b$};
+\node[box1,right=of canny] (fuse) {Logical OR\\edge fusion};
+\node[box1,right=of fuse] (mask) {Pocket +\\netting mask};
+\node[box1,right=of mask] (hough) {Hough circles\\minDist $40$};
+\node[box1,right=of hough] (nms) {Cushion $22$\\+ NMS $40$};
+\node[box2,below=1.45cm of warp] (hist) {1D H/S hist\\$30$ / $32$ bins};
+\node[box2,right=of hist] (gate) {Split-mask\\cue gate};
+\node[box2,right=of gate] (bhat) {Bhattacharyya\\$30/70$};
+\node[box2,right=of bhat] (reject) {Confidence\\reject $0.55$};
+\node[box2,right=of reject] (labels) {Final labels};
+\draw[->] (warp)--(blur); \draw[->] (blur)--(canny); \draw[->] (canny)--(fuse);
+\draw[->] (fuse)--(mask); \draw[->] (mask)--(hough); \draw[->] (hough)--(nms);
+\draw[->] (nms.south) -- ++(0,-0.5) -| (hist.north);
+\draw[->] (hist)--(gate); \draw[->] (gate)--(bhat); \draw[->] (bhat)--(reject); \draw[->] (reject)--(labels);
+\end{tikzpicture}}
+\captionof{figure}{End-to-end pipeline architecture.}
+\label{fig:pipeline}
+\end{center}
+
 
 \section{Stage 1: Ball Detection}
 
@@ -139,14 +175,9 @@ Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the
 
 \subsection{Failed K-Means clustering}
 
-To differentiate striped from solid balls, I first attempted to use K-Means clustering with $K=2$ on the pixels inside each ball mask to extract two dominant colours, then compared those colours with the reference balls using Euclidean distance. This proved computationally heavy and unreliable because the visibility of the white stripe depends on the physical rotation of the ball. Figure~\ref{fig:kmeans} shows the result on a solid blue ball. The two clusters split the number and the specular reflections rather than producing a stable stripe-versus-solid descriptor.
+To differentiate striped from solid balls, I first attempted to use K-Means clustering with $K=2$ on the pixels inside each ball mask to extract two dominant colours, then compared those colours with the reference balls using Euclidean distance. This proved computationally heavy and unreliable because the visibility of the white stripe depends on the physical rotation of the ball. On a solid blue ball, the two clusters split the number and the specular reflections rather than producing a stable stripe-versus-solid descriptor.
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.50\textwidth]{report_test_kmeans.jpeg}
-\caption{K-Means ($K=2$) applied to a solid blue ball. The clustering splits the number and reflections, not a rotationally stable stripe/solid feature.}
-\label{fig:kmeans}
-\end{figure}
+
 
 \subsection{Successful saturation-dominant histograms}
 
@@ -217,7 +248,7 @@ Overall & 79 & 8 & 11 & 0.908 & 0.878 & 0.893 \\
 
 \subsection{Stage 2: Recognition Results}
 
-Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $60$ of $79$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $75.9\%$. Figure~\ref{fig:table5final} shows the final labelled output for Table~5.
+Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $60$ of $79$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $75.9\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.9\%$ Stage~2 recognition accuracy.
 
 \begin{table}[H]
 \centering
@@ -241,30 +272,35 @@ Overall & 60 & 79 & 0.759 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.52\textwidth]{table5_final.jpeg}
-\caption{Final labelled output for Table~5 after dynamic pocket masking and Stage~2 classification.}
-\label{fig:table5final}
+\includegraphics[width=0.46\textwidth]{report_table4_final.jpeg}
+\caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification; Stage~2 recognition accuracy is $92.9\%$.}
+\label{fig:table4final}
 \end{figure}
 
 \subsection{Error Analysis}
 
-After restoring the $22$-pixel cushion margin and adding saturation-variance cue sampling, Stage~1 produces $79$ true positives, $8$ false positives, and $11$ false negatives; Stage~2 reaches $75.9\%$ recognition accuracy. Visual inspection reveals three persistent failure modes.
+\begin{wrapfigure}{r}{0.20\textwidth}
+\centering
+\includegraphics[width=\linewidth]{table5_final.jpeg}
+\end{wrapfigure}
+
+After restoring the $22$-pixel cushion margin and the split-mask cue gate, Stage~1 yields $79$ true positives, $8$ false positives, and $11$ false negatives; Stage~2 reaches $75.9\%$ recognition accuracy. Three failure modes remain.
 
 \paragraph{Failure Mode 1: Elliptical Duplicates.}
-Perspective rectification stretches balls near the outer edges of the table into ellipses. Because the Hough Transform searches for rigid circles, it can fit two smaller circles into opposite ends of one elongated ball. These two centres are often more than $40$ pixels apart, so they bypass both the minimum-separation constraint and the physical NMS. The output then contains dual classifications of one physical ball; the orange striped ball, for example, is sometimes reported as both a $5$ and a $13$. This is a limitation of fitting a circular model to a perspectively distorted silhouette.
+Perspective warping stretches edge balls into ellipses. Hough can fit two smaller circles into opposite ends of one oval; the centres are often more than $40$ pixels apart, bypassing both minimum separation and NMS. The orange ball is sometimes reported as both a $5$ and a $13$.
 
-\paragraph{Failure Mode 2: Cue Gate Vulnerability and Saturation Variance.}
-The original cue gate used a reduced $16$-pixel mask, which could be trapped entirely inside the white number circle of the $1$-ball or $9$-ball. A full-radius brightness test then over-corrected and rejected the true cue under harsh edge shadows. The final split-mask gate resolves both failures: centre brightness and core whiteness are evaluated on the $16$-pixel centre mask, while a full-radius saturation check detects the coloured bands of striped balls. The initial split thresholds still admitted the purple $12$ stripe, so the centre-value and full-saturation limits were tightened to $235$ and $76$ respectively. The Highlander rule then chooses the lowest full-mask saturation among survivors, and all other candidates fall back to their best non-cue histogram match. This recovered the $1$, $9$, and cue classifications and raised Stage~2 accuracy to $75.9\%$.
+\paragraph{Failure Mode 2: Cue Gate Rotation Trap.}
+A $16$-pixel gate mask could fall entirely inside the white number circles of the $1$ and $9$. A full-radius brightness test then over-corrected and rejected the cue under edge shadows. The final split-mask gate uses the $16$-pixel centre for brightness and whiteness and the full $21$-pixel radius for paint, with centre value above $235$, centre saturation below $75$, and full saturation below $76$. The Highlander rule selects the lowest full saturation; other candidates fall back to their best non-cue histogram match. Stage~2 accuracy is $75.9\%$.
 
 \paragraph{Failure Mode 3: Dense Racks and Boundary Blindspots.}
-Tightly packed balls in the triangular rack suffer severe edge merging. Their overlapping gradients destroy the isolated edge evidence that Hough requires, producing consistent false negatives even after the pocket and netting masks are applied. A morphological segmentation technique such as Watershed would be required to separate these touching regions. Reducing the cushion margin to $5$ pixels successfully recovered far-edge balls, but it catastrophically reintroduced rail shadows that bypassed the Stage~2 filter; the $22$-pixel margin is therefore mathematically necessary for this pipeline. The remaining false positives are offset elliptical responses rather than rail or cushion artifacts.
+Tightly packed balls suffer severe edge merging, so Hough loses the isolated gradients it needs; Watershed segmentation would be required. A $5$-pixel cushion margin recovered far-edge balls but reintroduced rail shadows, so the $22$-pixel margin was restored. Expanding the Hough radius to $17$--$26$ and lowering the accumulator threshold to $7.5$ and $7.0$ recovered no true balls: TP remained $79$, FPs rose to $10$ and $18$, and Stage~2 accuracy fell to $70.9\%$ and $69.6\%$. The original $19$--$24$ radius and threshold $8.0$ were retained.
 
 \section{Discussion}
 
-The multi-channel LAB edge-fusion detector, dynamic pocket and netting masks, physical NMS, and split-mask cue gate outperform the failed alternatives. The final Stage~1 precision is $0.908$, recall is $0.878$, and the F1-score is $0.893$; Stage~2 accuracy is $0.759$. Recognition remains limited by solid/stripe histogram overlap and offset elliptical responses; a spatial stripe detector and Watershed segmentation are the natural next steps.
+The final Stage~1 precision is $0.908$, recall $0.878$, and F1 $0.893$; Stage~2 accuracy is $0.759$. Remaining limits are solid/stripe overlap and elliptical Hough responses, motivating spatial stripe detection and Watershed segmentation.
 
 \section{Conclusion}
 
-The final pipeline achieves Stage~1 precision $0.908$, recall $0.878$, and F1 $0.893$, with Stage~2 accuracy $0.759$. Remaining failures are elliptical duplicates, rotated-stripe cue-gate errors, and dense-rack or boundary misses.
+The pipeline achieves P $0.908$, R $0.878$, F1 $0.893$ and Stage~2 accuracy $0.759$; remaining errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
 
 \end{document}
