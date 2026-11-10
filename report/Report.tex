@@ -1,6 +1,6 @@
 \documentclass[12pt]{article}
 
-\usepackage[a4paper,top=0.9in,bottom=0.9in,left=1in,right=1in]{geometry}
+\usepackage[a4paper,top=0.8in,bottom=0.8in,left=1in,right=1in]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
@@ -56,11 +56,11 @@ The task was to localise every pool ball on a rectified table image and then ass
 
 \subsection{End-to-End Pipeline Overview}
 
-Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses independent Canny edges from $L/a/b$, builds a pocket/netting mask, runs Hough with a $40$-pixel minimum separation, and applies cushion ($22$) and NMS ($40$) constraints. Stage~2 uses $30/32$-bin hue/saturation histograms, the split-mask cue gate, $30/70$ Bhattacharyya distance, and a $0.55$ rejection threshold (Figure~\ref{fig:pipeline}).
+Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses independent Canny edges from the $L/a/b$ channels, applies a dynamic pocket and netting mask, and runs Hough Circles with a $40$-pixel minimum separation plus cushion ($22$ px) and NMS ($40$ px) filtering. In parallel, a secondary recovery path runs standard integrated Canny edge detection directly on the unwarped camera frame before raw-frame Hough Circles; its candidates are projected into metric space through the homography $\mathbf{H}$. Stage~2 evaluates survivors using $30/32$-bin hue and saturation histograms, the split-mask cue gate, the $30/70$ Bhattacharyya distance, and a $0.55$ rejection threshold (Figure~\ref{fig:pipeline}).
 
 \begin{center}
 \textbf{End-to-End Pipeline}\\[0.3em]
-\hfuzz=2pt\hspace*{-2pt}\resizebox{0.98\linewidth}{!}{%
+\hfuzz=2pt\hspace*{-2pt}\resizebox{0.85\linewidth}{!}{%
 \begin{tikzpicture}[>=Stealth, node distance=0.35cm and 0.45cm,
  stage1/.style={draw, rounded corners, fill=blue!5, align=center, minimum height=1.0cm, text width=2.2cm, font=\scriptsize},
  stage2/.style={draw, rounded corners, fill=orange!8, align=center, minimum height=1.0cm, text width=2.2cm, font=\scriptsize}]
@@ -71,8 +71,10 @@ Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses ind
 \node[stage1,right=of orfuse] (hough) {Hough Circles\\minDist $40$};
 \node[stage1,right=of hough] (mask) {Pocket +\\Netting Mask};
 \node[stage1,right=of mask] (nms) {Cushion $22$\\+ NMS $40$};
-\node[stage1, fill=green!5, below=0.55cm of mask] (raw) {Raw-frame Hough\\+ $H$ Projection};
-\node[stage1, fill=green!8, below=0.55cm of nms] (fusion) {Ensemble Fusion\\$>30$ px};
+\node[stage1, fill=green!5, below=0.55cm of canny] (unwarped) {Unwarped\\Image};
+\node[stage1, fill=green!5, right=of unwarped] (rawcanny) {Standard\\Canny};
+\node[stage1, fill=green!5, right=of rawcanny] (raw) {Raw-frame Hough\\+ $H$ Projection};
+\node[stage1, fill=green!8, right=of raw] (fusion) {Ensemble Fusion\\$>30$ px};
 \node[stage2, below=2.4cm of warp] (hist) {1D H/S Histograms\\$30$ / $32$ Bins};
 \node[stage2,right=of hist] (gate) {Split-Mask\\Cue Gate};
 \node[stage2,right=of gate] (bhat) {Bhattacharyya\\$30/70$};
@@ -80,7 +82,7 @@ Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses ind
 \node[stage2,right=of reject] (labels) {Final Labels};
 \draw[->] (warp)--(lab); \draw[->] (lab)--(canny); \draw[->] (canny)--(orfuse);
 \draw[->] (orfuse)--(hough); \draw[->] (hough)--(mask); \draw[->] (mask)--(nms);
-\draw[->] (nms.south)--(fusion.north); \draw[->] (raw.east)--(fusion.west);
+\draw[->] (unwarped)--(rawcanny); \draw[->] (rawcanny)--(raw); \draw[->] (raw)--(fusion); \draw[->] (nms.south)--(fusion.north);
 \draw[->] (fusion.south) -- ++(0,-0.5) -| (hist.north);
 \draw[->] (hist)--(gate); \draw[->] (gate)--(bhat); \draw[->] (bhat)--(reject); \draw[->] (reject)--(labels);
 \end{tikzpicture}}
@@ -107,13 +109,13 @@ I then attempted to isolate the felt directly in HSV space with a fixed hue rang
 
 \begin{figure}[H]
 \centering
-\begin{subfigure}[b]{0.42\textwidth}
+\begin{subfigure}[b]{0.34\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_original.jpeg}
 \caption{Region around the green ball.}
 \end{subfigure}
 \hfill
-\begin{subfigure}[b]{0.42\textwidth}
+\begin{subfigure}[b]{0.34\textwidth}
 \centering
 \includegraphics[width=\linewidth]{report_hsv_mask.jpeg}
 \caption{Fixed HSV mask: green ball merges into felt.}
@@ -132,7 +134,24 @@ I realised that the solution required looking at colour boundaries, not just bri
 The lightness channel supplies the strong outer silhouette of each ball, while the chromatic channels supply the colour boundaries that remain visible when a ball is dark, shadowed, or similar in brightness to the felt. Fusing the three edge maps produces a gradient image that is markedly more complete than any single-channel edge map.
 \end{tcolorbox}
 
-The fused edge map from Table~4 is used directly by the circular detector.
+Figure~\ref{fig:labedges} shows the rectified Table~4 image and the corresponding multi-channel LAB edge map used by the circular detector.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_table4_warped.jpeg}
+\caption{Rectified Table~4.}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_table4_edges.jpeg}
+\caption{Gaussian-smoothed LAB Canny edge map.}
+\end{subfigure}
+\caption{Rectification and multi-channel LAB Canny edge fusion.}
+\label{fig:labedges}
+\end{figure}
 
 
 
@@ -142,7 +161,7 @@ The fused edge map is passed to the Hough Circle Transform with a minimum centre
 
 For each of the six pocket centres, I examined a $120\times120$ pixel region on the raw lightness channel and thresholded two complementary structures: the dark pocket holes at $L<35$ and the bright metallic brackets at $L>200$. The mid-gray pocket netting is not captured by either threshold, so I also extracted the combined LAB edge map in the same region and dilated it with a $15\times15$ circular kernel. The netting is a dense web of edges, so this dilation fuses it into a solid morphological block. The fused netting block was OR-ed with the L-extreme mask. The local mask was restricted to a $70$-pixel radius around the pocket centre so that a bright ball near a pocket would not be mistaken for a bracket, and the six local masks were combined and dilated with a $13\times13$ circular kernel to cover the immediate pocket lip. A Hough candidate is rejected only when its centre lies on this complete hole--bracket--netting mask. The cushion exclusion margin remains at $22$ pixels. An experiment reducing it to $5$ pixels recovered far-edge balls but reintroduced rail shadows that bypassed the Stage~2 filter, so the larger margin was restored.
 
-Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $40$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $40$ pixels of a retained centre is permanently removed. This threshold sits just below the $43$-pixel physical ball diameter. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls. An attempt to implement a manual 40-pixel Physical Non-Maximum Suppression step revealed that OpenCV's HoughCircles implementation already inherently suppresses intersecting detections via its internal minDist parameter during the accumulator peak-finding phase. An edge-thickness measurement on a $60\times60$ crop around a dark Table~6 ball gave $362$ combined-edge pixels against $353$ skeleton pixels, an average thickness of $1.025$ pixels per skeleton pixel. Zhang--Suen thinning therefore removed only nine pixels and left the ghost responses unchanged. A sweep of the accumulator threshold from $8$ to $22$ showed that ghost detections disappear only at an accumulator threshold of $14$, but the number of true balls then falls from $83$ to $15$. No mathematically clean threshold exists: the residual offset arcs are an intrinsic limitation of the accumulator on dense clusters rather than a tuning error. Instead of replacing rectified detection, I use the raw-frame path as a secondary recovery pass. The same LAB edge fusion and Hough search are run on the unwarped photograph with accumulator threshold $14$, minimum separation $30$, and radius $18$--$30$. Each raw centre is mapped through $\mathbf{H}$ into metric coordinates. A projected candidate is appended only when it is farther than $30$ pixels from every rectified detection, after which the combined ensemble passes through the cushion, pocket, split-mask cue gate, and Stage~2 classifier. This recovered three true balls, raising TP from $79$ to $82$ and reducing FN from $11$ to $8$, while false positives stayed at $8$; Stage~1 F1 rose from $0.893$ to $0.911$ and Stage~2 accuracy from $75.9\%$ to $76.8\%$.
+Hough detection can leak intersecting accumulator peaks, so I enforce a strict $40$-pixel physical NMS. An edge-thickness measurement gave $1.025$ pixels per skeleton pixel, showing that thinning was ineffective, and a $param2$ sweep made ghosts disappear only at $14$ while true balls fell from $83$ to $15$. No clean accumulator threshold exists. Instead, the raw-frame path is a secondary recovery pass: LAB Canny and Hough on the unwarped image ($param2=14$, minimum separation $30$, radius $18$--$30$), followed by homography projection and fusion of candidates farther than $30$ pixels from every rectified detection. This recovered three balls, raising TP from $79$ to $82$ and reducing FN from $11$ to $8$ with FP unchanged, so F1 rose from $0.893$ to $0.911$ and Stage~2 accuracy from $75.9\%$ to $76.8\%$.
 
 The dynamic mask covers the dark hole, bright bracket, and netting, while the cue ball is spared and recovered by the final detector.
 
@@ -167,9 +186,26 @@ d = 0.30\,d_{\mathrm{hue}} + 0.70\,d_{\mathrm{sat}}.
 A detection whose weighted distance exceeds $0.55$ is rejected as a non-ball or as an unreliable observation.
 \end{tcolorbox}
 
-Stage~1 occasionally returned circular shadow artifacts along the rails. Shadows lack the sharp saturation peaks of resin pool balls, so their histograms lie far from every reference. Tightening the rejection threshold to $0.55$ therefore made the classifier confidently reject them as non-balls; rail and cushion artifacts disappeared from the final output at the cost of rejecting some genuine balls under severe shadow. The cue-ball analysis exposed why a pure distance threshold is insufficient. The cue histogram is heavily influenced by green felt reflections, so its best Bhattacharyya distance reached $0.636$ and overlapped with false positives. The cue gate originally used a reduced $16$-pixel mask, which could fall entirely inside the white number circle of the $1$-ball or $9$-ball and hijack those balls. I therefore split the gate into two masks: a $16$-pixel centre mask evaluates core brightness and whiteness, while a full-radius mask (about $21$ pixels) evaluates the overall paint. A true cue ball is bright in the centre and low in full-mask saturation; a striped ball has a white centre but coloured bands that raise the full-mask saturation. Initial split thresholds of centre value above $200$, centre saturation below $75$, and full saturation below $100$ still admitted the purple $12$ stripe, whose centre value was only $221$--$231$ and whose full saturation was about $49$. I therefore tightened the gate to centre value above $235$ and full saturation below $76$, which excludes the purple stripe and the $9$-ball while retaining the cue ball (centre value at least $238$, full saturation at most $73$). The Highlander rule then selects the surviving candidate with the lowest full-mask saturation; every other gate candidate falls back to its best non-cue histogram match.
+Stage~1 occasionally returned circular shadow artifacts along the rails. Tightening the Bhattacharyya rejection threshold to $0.55$ removed them, because shadows lack the sharp saturation peaks of resin balls. The cue histogram overlaps false positives because of green-felt reflections, so the cue gate uses a $16$-pixel centre for brightness and whiteness and a full $21$-pixel mask for overall paint. Initial thresholds admitted the purple $12$ stripe; tightening to centre value above $235$, centre saturation below $75$, and full saturation below $76$ excludes the purple stripe and the $9$-ball while retaining the cue. The Highlander rule selects the lowest full saturation as the cue; all other candidates fall back to their best non-cue histogram match.
 
-The solid blue ball peaks at high saturation, whereas the striped blue ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
+Figure~\ref{fig:sathist} compares the 1D saturation distributions of the solid blue ball and the striped blue ball. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
+
+\begin{figure}[H]
+\centering
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_hist_solid.jpeg}
+\caption{Solid blue ball: high-saturation peak.}
+\end{subfigure}
+\hfill
+\begin{subfigure}[b]{0.32\textwidth}
+\centering
+\includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
+\caption{Striped blue ball: low-saturation peak.}
+\end{subfigure}
+\caption{1D saturation histograms for the solid blue ball and striped blue ball. The white stripe shifts the striped distribution toward low saturation.}
+\label{fig:sathist}
+\end{figure}
 
 
 
