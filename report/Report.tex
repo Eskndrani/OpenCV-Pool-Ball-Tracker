@@ -56,38 +56,61 @@ The task was to localise every pool ball on a rectified table image and classify
 
 Each image is warped into the $1434\times683$ metric frame. Stage~1 fuses Canny edges from the $L/a/b$ channels, applies a dynamic pocket and netting mask, and runs Hough Circles with 40-pixel minimum separation, a 22-pixel cushion margin, and 40-pixel NMS. A raw-frame recovery branch runs Standard Canny and Hough on the unwarped image, projects candidates through $\mathbf{H}$, and fuses them when they lie more than 30 pixels from every rectified detection. Stage~2 compares 30/32-bin hue and saturation histograms using a 30/70 distance and a split-mask cue gate, rejecting distances above $0.55$ (Figure~\ref{fig:pipeline}).
 
-\begin{figure}[H]
+\begin{figure}[htbp]
 \centering
-\resizebox{0.97\linewidth}{!}{%
-\begin{tikzpicture}[>=Stealth, node distance=0.28cm and 0.34cm,
- stage1/.style={draw, rounded corners, fill=blue!5, align=center, minimum height=1.0cm, text width=2.4cm},
- stage2/.style={draw, rounded corners, fill=orange!8, align=center, minimum height=1.0cm, text width=3.1cm},
- raw/.style={draw, rounded corners, fill=green!6, align=center, minimum height=0.9cm, text width=2.4cm}]
-% Stage 1 row
-\node[stage1] (warp) {Perspective Warp};
-\node[stage1,right=of warp] (lab) {LAB Split + Gaussian};
-\node[stage1,right=of lab] (canny) {Canny L/a/b};
-\node[stage1,right=of canny] (orfuse) {OR Fusion};
-\node[stage1,right=of orfuse] (hough) {Hough Circles};
-\node[stage1,right=of hough] (mask) {Pocket + Netting Mask};
-\node[stage1,right=of mask] (nms) {Cushion + NMS};
-\node[stage1, fill=green!10, right=of nms] (fusion) {Ensemble Fusion};
-% Raw-frame recovery branch
-\node[raw, below=1.0cm of warp] (unwarped) {Unwarped Image};
-\node[raw, right=of unwarped] (rawcanny) {Standard Canny};
-\node[raw, right=of rawcanny] (rawhough) {Raw Hough + H Projection};
-% Stage 2 row
-\node[stage2, below=3.4cm of warp] (hist) {1D H/S Histograms};
-\node[stage2,right=of hist] (gate) {Split-Mask Cue Gate};
-\node[stage2,right=of gate] (bhat) {Bhattacharyya 30/70};
-\node[stage2,right=of bhat] (reject) {Reject 0.55};
-\node[stage2,right=of reject] (labels) {Final Labels};
-\draw[->] (warp)--(lab); \draw[->] (lab)--(canny); \draw[->] (canny)--(orfuse);
-\draw[->] (orfuse)--(hough); \draw[->] (hough)--(mask); \draw[->] (mask)--(nms); \draw[->] (nms)--(fusion);
-\draw[->] (unwarped)--(rawcanny); \draw[->] (rawcanny)--(rawhough);
-\draw[->] (rawhough.east) -- ++(0.3,0) -| (fusion.east);
-\draw[->] (fusion.east) -- ++(0.4,0) |- (hist.north);
-\draw[->] (hist)--(gate); \draw[->] (gate)--(bhat); \draw[->] (bhat)--(reject); \draw[->] (reject)--(labels);
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    node distance=0.4cm and 0.35cm,
+    box/.style={draw, rounded corners, fill=blue!5, align=center, minimum height=0.9cm, text width=1.8cm, font=\tiny},
+    rawbox/.style={draw, rounded corners, fill=green!5, align=center, minimum height=0.9cm, text width=1.8cm, font=\tiny},
+    stage2box/.style={draw, rounded corners, fill=orange!5, align=center, minimum height=0.9cm, text width=1.8cm, font=\tiny},
+    fusebox/.style={draw, rounded corners, fill=green!15, align=center, minimum height=0.9cm, text width=1.8cm, font=\tiny},
+    arrow/.style={-stealth, thick}
+]
+
+% Row 1: Primary Rectified Stage 1 Path
+\node [box] (warp) {Perspective Warp \\ 1434 $\times$ 683};
+\node [box, right=of warp] (lab) {LAB Split \\ + Gaussian};
+\node [box, right=of lab] (canny) {Canny \\ L / a / b};
+\node [box, right=of canny] (or) {OR Fusion};
+\node [box, right=of or] (hough) {Hough Circles \\ minDist 40};
+\node [box, right=of hough] (pocket) {Pocket + \\ Netting Mask};
+\node [box, right=of pocket] (cushion) {Cushion 22 \\ + NMS 40};
+\node [fusebox, right=of cushion] (fuse) {Ensemble Fusion \\ $> 30$~px};
+
+% Row 2: Secondary Unwarped Branch (Positioned cleanly under the start of Row 1)
+\node [rawbox, below=0.5cm of warp] (unwarped) {Unwarped Image};
+\node [rawbox, right=of unwarped] (rawcanny) {Standard Canny};
+\node [rawbox, right=of rawcanny] (rawhough) {Raw Hough \\ + H Projection};
+
+% Row 3: Stage 2 Recognition Flow
+\node [stage2box, below=2.4cm of warp] (hist) {1D H/S Histograms \\ 30 / 32 Bins};
+\node [stage2box, right=of hist] (gate) {Split-Mask \\ Cue Gate};
+\node [stage2box, right=of gate] (bhat) {Bhattacharyya \\ 30/70};
+\node [stage2box, right=of bhat] (reject) {Reject 0.55};
+\node [stage2box, right=of reject] (labels) {Final Labels};
+
+% Connect Row 1
+\draw [arrow] (warp) -- (lab);
+\draw [arrow] (lab) -- (canny);
+\draw [arrow] (canny) -- (or);
+\draw [arrow] (or) -- (hough);
+\draw [arrow] (hough) -- (pocket);
+\draw [arrow] (pocket) -- (cushion);
+\draw [arrow] (cushion) -- (fuse);
+
+% Connect Row 2 to Ensemble Fusion
+\draw [arrow] (unwarped) -- (rawcanny);
+\draw [arrow] (rawcanny) -- (rawhough);
+\draw [arrow] (rawhough.east) -| (fuse.west);
+
+% Connect Ensemble Fusion to Stage 2
+\draw [arrow] (fuse.south) -- ++(0,-1.65) -| (hist.north);
+\draw [arrow] (hist) -- (gate);
+\draw [arrow] (gate) -- (bhat);
+\draw [arrow] (bhat) -- (reject);
+\draw [arrow] (reject) -- (labels);
+
 \end{tikzpicture}}
 \caption{End-to-end pipeline architecture.}
 \label{fig:pipeline}
