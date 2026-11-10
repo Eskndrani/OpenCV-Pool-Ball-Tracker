@@ -702,7 +702,6 @@ void MyApplication()
         std::vector<int> recognizedLabels;
         recognizedBalls.reserve(filteredCircles.size());
         recognizedLabels.reserve(filteredCircles.size());
-        std::vector<int> stage2Labels(filteredCircles.size(), -1);
 
         std::vector<ClassificationResult> classifications;
         classifications.reserve(filteredCircles.size());
@@ -745,7 +744,6 @@ void MyApplication()
                 continue;
             }
 
-            stage2Labels[i] = classifications[i].label;
             recognizedBalls.push_back(filteredCircles[i]);
             recognizedLabels.push_back(classifications[i].label);
         }
@@ -789,7 +787,7 @@ void MyApplication()
 
         const std::vector<GroundTruthBall> groundTruth = loadGroundTruth(groundTruthPath, imageName);
         const DetectionMetrics metrics =
-            evaluateDetections(filteredCircles, stage2Labels, groundTruth, 21.0F);
+            evaluateDetections(recognizedBalls, recognizedLabels, groundTruth, 21.5F);
         printDetectionMetrics(imageName, metrics);
 
         totalTruePositives += metrics.truePositives;
