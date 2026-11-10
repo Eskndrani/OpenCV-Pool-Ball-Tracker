@@ -169,11 +169,11 @@ I split the rectified image into CIELAB, smoothed all channels with a $5\times5$
 \end{figure}
 \vspace{-3pt}
 
-\subsection{Dynamic pocket mask, netting mask, and physical NMS}
+\subsection{Dynamic pocket mask, netting mask, and physical non-maximum suppression}
 
 The fused map is passed to Hough with a minimum spatial separation of $40$~mm ($40$~px) and a radius range of $19$--$24$~px. A blind $95$-pixel pocket rejection removed genuine corner balls, so I replaced it with a dynamic mask. For each pocket I thresholded a $120\times120$ region for dark holes ($L<35$) and bright brackets ($L>200$), dilated the LAB edges with a $15\times15$ kernel to capture netting, combined the masks with a logical OR, restricted each to $70$ pixels, and dilated the combined mask with $13\times13$. A candidate is rejected only when its centre lies on this hole--bracket--netting mask. I kept a $22$-pixel cushion margin because $5$ pixels recovered far-edge balls but reintroduced rail shadows.
 
-Hough occasionally returned intersecting peaks for one ball, so I enforce a $40$-pixel physical NMS. Zhang--Suen thinning removed almost nothing ($1.025$ pixels per skeleton pixel), and a Hough accumulator-threshold sweep made ghosts disappear only at a threshold of $14$ while true balls fell from $83$ to $15$. I therefore added a raw-frame path: Canny and Hough on the unwarped image (accumulator threshold $14$, minimum spatial separation $30$~px, radius $18$--$30$~px), projected through $\mathbf{H}$, and fused only if more than $30$ pixels from every rectified detection. This recovered three balls, raising TP from $79$ to $82$ and F1 from $0.893$ to $0.911$, with FP unchanged.
+Circular Hough voting occasionally returned intersecting peaks for one ball, so I enforce a $40$-pixel physical non-maximum suppression. Iterative skeletonization and morphological boundary thinning removed almost nothing ($1.025$ pixels per skeleton pixel), and an accumulator-threshold sweep made ghosts disappear only at a threshold of $14$ while true balls fell from $83$ to $15$. I therefore added a raw-frame path: gradient-based edge detection and circular Hough voting on the unwarped image (accumulator threshold $14$, minimum spatial separation $30$~px, radius $18$--$30$~px), projected through $\mathbf{H}$, and fused only if more than $30$ pixels from every rectified detection. This recovered three balls, raising TP from $79$ to $82$ and F1 from $0.893$ to $0.911$, with FP unchanged.
 
 \section{Stage 2: Ball Recognition and Classification}
 
