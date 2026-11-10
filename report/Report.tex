@@ -43,7 +43,7 @@
 \thispagestyle{fancy}
 
 \begin{abstract}
-This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.911$, recall $0.911$ and F1-score $0.911$, together with Stage~2 recognition accuracy $76.8\%$ across the six test tables.
+This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.867$, recall $0.944$ and F1-score $0.904$, together with Stage~2 recognition accuracy $72.9\%$ across the six test tables.
 \end{abstract}
 
 \section{Introduction}
@@ -173,7 +173,7 @@ The solid blue ball peaks at high saturation, whereas the striped blue ball has 
 
 \subsection{Stage 1: Detection Results}
 
-Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket and netting mask removes the pocket structures while sparing nearby balls, and the physical NMS removes intersecting accumulator peaks. Overall precision is $0.911$, recall is $0.911$, and the F1-score is $0.911$.
+Evaluation is explicitly split between localization and recognition. Stage~1 measures binary spatial detection: a candidate is marked as a True Positive if its centre falls within a $21$-pixel Euclidean radius of a ground-truth ball, independent of its predicted class label. Stage~2 recognition accuracy is evaluated downstream strictly on these localized True Positives. Decoupling the two stages prevents classification mislabels from artificially penalizing the geometric localization detector. Table~\ref{tab:stage1} reports the resulting spatial metrics: overall precision is $0.867$, recall is $0.944$, and the F1-score is $0.904$.
 
 \begin{table}[H]
 \centering
@@ -183,21 +183,21 @@ Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket and
 \toprule
 Image & TP & FP & FN & Precision & Recall & F1-score \\
 \midrule
-Table 1 & 13 & 0 & 3 & 1.000 & 0.812 & 0.897 \\
-Table 2 & 15 & 2 & 1 & 0.882 & 0.938 & 0.909 \\
+Table 1 & 16 & 2 & 0 & 0.889 & 1.000 & 0.941 \\
+Table 2 & 16 & 3 & 0 & 0.842 & 1.000 & 0.914 \\
 Table 3 & 16 & 0 & 0 & 1.000 & 1.000 & 1.000 \\
-Table 4 & 14 & 2 & 1 & 0.875 & 0.933 & 0.903 \\
-Table 5 & 13 & 2 & 1 & 0.867 & 0.929 & 0.897 \\
+Table 4 & 13 & 3 & 2 & 0.812 & 0.867 & 0.839 \\
+Table 5 & 13 & 3 & 1 & 0.812 & 0.929 & 0.867 \\
 Table 6 & 11 & 2 & 2 & 0.846 & 0.846 & 0.846 \\
 \midrule
-Overall & 82 & 8 & 8 & 0.911 & 0.911 & 0.911 \\
+Overall & 85 & 13 & 5 & 0.867 & 0.944 & 0.904 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Stage 2: Recognition Results}
 
-Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $63$ of $82$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $76.8\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.9\%$ Stage~2 recognition accuracy.
+Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $62$ of $85$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $72.9\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.3\%$ Stage~2 recognition accuracy.
 
 \begin{table}[H]
 \centering
@@ -207,14 +207,14 @@ Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detect
 \toprule
 Image & Correct labels & True positives & Accuracy \\
 \midrule
-Table 1 & 10 & 13 & 0.769 \\
-Table 2 & 10 & 15 & 0.667 \\
+Table 1 & 10 & 16 & 0.625 \\
+Table 2 & 10 & 16 & 0.625 \\
 Table 3 & 12 & 16 & 0.750 \\
-Table 4 & 13 & 14 & 0.929 \\
+Table 4 & 12 & 13 & 0.923 \\
 Table 5 & 10 & 13 & 0.769 \\
 Table 6 & 8 & 11 & 0.727 \\
 \midrule
-Overall & 63 & 82 & 0.768 \\
+Overall & 62 & 85 & 0.729 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -222,13 +222,13 @@ Overall & 63 & 82 & 0.768 \\
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\linewidth]{report_table4_final.jpeg}
-\caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification; Stage~2 recognition accuracy is $92.9\%$.}
+\caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification; Stage~2 recognition accuracy is $92.3\%$.}
 \label{fig:table4final}
 \end{figure}
 
 \subsection{Error Analysis}
 
-After restoring the $22$-pixel cushion margin, applying the split-mask cue gate, and fusing rectified with raw-frame candidates, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Figure~\ref{fig:table6failure} shows the Table~6 output used to inspect the remaining failures.
+After restoring the $22$-pixel cushion margin, applying the split-mask cue gate, and fusing rectified with raw-frame candidates, Stage~1 yields $85$ true positives, $13$ false positives, and $5$ false negatives; Stage~2 reaches $72.9\%$ recognition accuracy. Figure~\ref{fig:table6failure} shows the Table~6 output used to inspect the remaining failures.
 
 \begin{figure}[H]
 \centering
@@ -248,11 +248,11 @@ Balls touching inside the triangular rack break the continuous circular Canny gr
 
 \section{Discussion}
 
-The final Stage~1 precision, recall, and F1 are all $0.911$; Stage~2 accuracy is $0.768$. Remaining limits are solid/stripe overlap and elliptical Hough responses.
+The final Stage~1 precision is $0.867$, recall is $0.944$, and F1 is $0.904$; Stage~2 accuracy is $0.729$. Remaining limits are solid/stripe overlap and elliptical Hough responses.
 
 \section{Conclusion}
 
-The ensemble achieves P $0.911$, R $0.911$, F1 $0.911$ and Stage~2 accuracy $0.768$; residual errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
+The ensemble achieves P $0.867$, R $0.944$, F1 $0.904$ and Stage~2 accuracy $0.729$; residual errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
 
 \section*{AI Usage Statement}
 
