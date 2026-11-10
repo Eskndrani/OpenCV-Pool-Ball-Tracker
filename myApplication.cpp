@@ -762,10 +762,18 @@ void MyApplication()
 
             cv::circle(detectionImage, centerPoint, radius, cv::Scalar(0, 0, 0), 2);
             cv::circle(detectionImage, centerPoint, 2, cv::Scalar(0, 0, 0), -1);
+            cv::Point textOrigin = (recognizedLabels[i] == 0)
+                ? centerPoint + cv::Point(-16, 32)
+                : centerPoint + cv::Point(-8, 5);
+            textOrigin.x = std::max(2, textOrigin.x);
+            textOrigin.x = std::min(detectionImage.cols - 62, textOrigin.x);
+            textOrigin.y = std::max(16, textOrigin.y);
+            textOrigin.y = std::min(detectionImage.rows - 6, textOrigin.y);
+
             cv::putText(
                 detectionImage,
                 labelText,
-                centerPoint + cv::Point(-8, 5),
+                textOrigin,
                 cv::FONT_HERSHEY_SIMPLEX,
                 0.55,
                 cv::Scalar(0, 0, 0),

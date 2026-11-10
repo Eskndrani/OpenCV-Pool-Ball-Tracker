@@ -13,6 +13,9 @@
 \usepackage{fancyhdr}
 \usepackage{wrapfig}
 \usepackage{microtype}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
+\captionsetup{hypcap=false}
 
 \graphicspath{{../results/}{results/}}
 
@@ -45,7 +48,7 @@ This report documents the experimental development of a two-stage computer visio
 
 \section{Introduction}
 
-The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final system through a sequence of explicit experiments, and I retained a detailed error analysis because the remaining failures reveal the limits of the chosen detectors and descriptors.
+The task was to localise every pool ball on a rectified table image and then assign each surviving detection to one of the sixteen known balls. The six test images contain strong shadows, uneven lighting, tightly packed racked balls, and a mixture of solids and stripes. I developed the final system through a sequence of explicit experiments, and I retained a detailed error analysis because the remaining failures reveal the limits of the chosen detectors and descriptors. The project repository is available at \url{git@gitlab.scss.tcd.ie:csu33012-2627-group07/project07.git}.
 
 \subsection{End-to-End Pipeline Overview}
 
@@ -53,27 +56,28 @@ Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses ind
 
 \begin{center}
 \textbf{End-to-End Pipeline}\\[0.3em]
-\hfuzz=2pt\hspace*{-2pt}\resizebox{0.60\linewidth}{!}{%
-\begin{tikzpicture}[>=Stealth, node distance=0.22cm,
- box1/.style={draw,rounded corners,align=center,font=\scriptsize,text width=1.75cm,minimum height=0.95cm,fill=blue!5},
- box2/.style={draw,rounded corners,align=center,font=\scriptsize,text width=2.15cm,minimum height=0.95cm,fill=orange!8}]
-\node[box1] (warp) {Perspective warp\\$1434\times683$};
-\node[box1,right=of warp] (blur) {LAB split\\Gaussian $5\times5$};
-\node[box1,right=of blur] (canny) {Canny\\$L$ / $a$ / $b$};
-\node[box1,right=of canny] (fuse) {Logical OR\\edge fusion};
-\node[box1,right=of fuse] (mask) {Pocket +\\netting mask};
-\node[box1,right=of mask] (hough) {Hough circles\\minDist $40$};
-\node[box1,right=of hough] (nms) {Cushion $22$\\+ NMS $40$};
-\node[box1,below=0.55cm of nms] (fusion) {Raw-frame Hough\\+ $H$ projection\\Fusion $>30$ px};
-\node[box2,below=1.45cm of warp] (hist) {1D H/S hist\\$30$ / $32$ bins};
-\node[box2,right=of hist] (gate) {Split-mask\\cue gate};
-\node[box2,right=of gate] (bhat) {Bhattacharyya\\$30/70$};
-\node[box2,right=of bhat] (reject) {Confidence\\reject $0.55$};
-\node[box2,right=of reject] (labels) {Final labels};
-\draw[->] (warp)--(blur); \draw[->] (blur)--(canny); \draw[->] (canny)--(fuse);
-\draw[->] (fuse)--(mask); \draw[->] (mask)--(hough); \draw[->] (hough)--(nms);
-\draw[->] (nms.south)--(fusion.north);
-\draw[->] (fusion.south) -- ++(0,-0.35) -| (hist.north);
+\hfuzz=2pt\hspace*{-2pt}\resizebox{0.98\linewidth}{!}{%
+\begin{tikzpicture}[>=Stealth, node distance=0.28cm,
+ stage1/.style={draw, rounded corners, fill=blue!5, align=center, minimum height=1.1cm, font=\small, text width=1.9cm},
+ stage2/.style={draw, rounded corners, fill=orange!8, align=center, minimum height=1.1cm, font=\small, text width=2.5cm}]
+\node[stage1] (warp) {Perspective Warp\\$1434\times683$};
+\node[stage1,right=of warp] (blur) {LAB Split\\+ Gaussian Smoothing};
+\node[stage1,right=of blur] (canny) {Canny\\$L$ / $a$ / $b$};
+\node[stage1,right=of canny] (orfuse) {Logical OR\\Edge Fusion};
+\node[stage1,right=of orfuse] (mask) {Pocket +\\Netting Mask};
+\node[stage1,right=of mask] (hough) {Hough Circles\\minDist $40$};
+\node[stage1,right=of hough] (nms) {Cushion $22$\\+ NMS $40$};
+\node[stage1, fill=green!5, below=0.45cm of hough] (raw) {Raw-frame Hough\\+ $H$ Projection};
+\node[stage1, fill=green!8, right=0.30cm of raw] (fusion) {Ensemble Fusion\\$>30$ px};
+\node[stage2, below=2.3cm of warp] (hist) {1D H/S Histograms\\$30$ / $32$ Bins};
+\node[stage2,right=of hist] (gate) {Split-Mask\\Cue Gate};
+\node[stage2,right=of gate] (bhat) {Bhattacharyya\\$30/70$};
+\node[stage2,right=of bhat] (reject) {Confidence\\Reject $0.55$};
+\node[stage2,right=of reject] (labels) {Final Labels};
+\draw[->] (warp)--(blur); \draw[->] (blur)--(canny); \draw[->] (canny)--(orfuse);
+\draw[->] (orfuse)--(mask); \draw[->] (mask)--(hough); \draw[->] (hough)--(nms);
+\draw[->] (nms.south)--(fusion.north); \draw[->] (raw)--(fusion);
+\draw[->] (fusion.south) -- ++(0,-0.45) -| (hist.north);
 \draw[->] (hist)--(gate); \draw[->] (gate)--(bhat); \draw[->] (bhat)--(reject); \draw[->] (reject)--(labels);
 \end{tikzpicture}}
 \captionof{figure}{End-to-end pipeline architecture.}
@@ -226,7 +230,7 @@ After restoring the $22$-pixel cushion margin, applying the split-mask cue gate,
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.85\linewidth]{table6_final.jpeg}
+\includegraphics[width=0.88\linewidth]{table6_final.jpeg}
 \caption{Final labelled output for Table~6, showing the elliptical, cue-gate, and dense-rack failure modes discussed below.}
 \label{fig:table6failure}
 \end{figure}
@@ -250,11 +254,13 @@ The ensemble achieves P $0.911$, R $0.911$, F1 $0.911$ and Stage~2 accuracy $0.7
 
 \section*{AI Usage Statement}
 
-{\footnotesize Generative AI tools (Google Gemini) assisted with LaTeX formatting, TikZ architecture rendering, textual revisions, and standalone C++ diagnostic scripts for parameter sweeps.
+{\footnotesize Generative AI tools (Google Gemini) were used during this project to assist with report text revisions, LaTeX/TikZ diagram formatting, and generating standalone C++ diagnostic scripts for parameter sweeps.
 
-\textbf{Example 1: Diagnostic Script Generation.} \textit{Prompt:} ``Write a standalone diagnostic script to sweep Hough \texttt{param2} from 6.0 to 18.0 and measure its impact on edge-thinned LAB maps versus raw Canny maps.'' \textit{Response:} ``Generated a C++ benchmark function iterating through \texttt{param2}, logging TP/FP counts to \texttt{stage2\_feature\_analysis.csv}.''
+\textbf{Prompt \& Response Example 1 (Parameter Sweep Script Generation):} \textit{User Prompt:} ``Write a standalone diagnostic script to sweep Hough param2 from 6.0 to 18.0 and measure its impact on edge-thinned LAB maps versus raw Canny maps.'' \textit{AI Response:} ``Generated a C++ benchmark function iterating through param2 values and logging True Positive / False Positive counts to stage2\_feature\_analysis.csv.''
 
-\textbf{Example 2: Feature Exploration and Gate Suggestion.} \textit{Prompt:} ``The 1D Hue/Sat histogram classifies the 9-ball as the cue ball when its white number faces the camera. How can we separate them mathematically?'' \textit{Response:} ``Suggested a dual-mask saturation/value check (Split-Mask Cue Gate) comparing the 16-pixel centre core against the 21-pixel full radius to capture edge paint while ignoring felt shadows.''
+\textbf{Prompt \& Response Example 2 (Feature Exploration \& Gate Suggestion):} \textit{User Prompt:} ``The 1D Hue/Sat histogram classifies the 9-ball as the cue ball when its white number circle faces the camera. How can we separate them mathematically?'' \textit{AI Response:} ``Suggested implementing a dual-mask saturation/value check (Split-Mask Cue Gate) comparing the 16px center core against the 21px full ball radius to capture edge paint while ignoring felt shadows.''
+
+\textbf{Prompt \& Response Example 3 (Diagnostic Script \& LaTeX Troubleshooting):} \textit{User Prompt:} ``The pipeline diagram TikZ block is wrapping text awkwardly and overflowing the margins. How do I format a two-stage flow cleanly?'' \textit{AI Response:} ``Provided structured TikZ matrix/node code with explicit node distance and rounded rectangle styles to align Stage 1 detection and Stage 2 recognition.''
 
 All core algorithmic implementations, experimental designs, parameter selections, and final data verification were conducted directly by the author.}\normalsize
 
