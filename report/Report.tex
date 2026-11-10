@@ -40,7 +40,7 @@
 \thispagestyle{fancy}
 
 \begin{abstract}
-This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.908$, recall $0.878$ and F1-score $0.893$, together with Stage~2 recognition accuracy $75.9\%$ across the six test tables.
+This report documents the experimental development of a two-stage computer vision pipeline for localising and recognising pool balls. Stage~1 tested a green-channel boost with adaptive thresholding, fixed HSV and single-channel lightness thresholding, and finally a successful multi-channel CIELAB edge-fusion detector with a dynamic L-channel pocket mask and geometric cushion constraints. Stage~2 tested K-Means colour clustering and finally adopted one-dimensional hue and saturation histograms with a reduced circular sampling mask and a $30/70$ weighting scheme. The final pipeline achieves Stage~1 precision $0.911$, recall $0.911$ and F1-score $0.911$, together with Stage~2 recognition accuracy $76.8\%$ across the six test tables.
 \end{abstract}
 
 \section{Introduction}
@@ -64,6 +64,7 @@ Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses ind
 \node[box1,right=of fuse] (mask) {Pocket +\\netting mask};
 \node[box1,right=of mask] (hough) {Hough circles\\minDist $40$};
 \node[box1,right=of hough] (nms) {Cushion $22$\\+ NMS $40$};
+\node[box1,below=0.55cm of nms] (fusion) {Raw-frame Hough\\+ $H$ projection\\Fusion $>30$ px};
 \node[box2,below=1.45cm of warp] (hist) {1D H/S hist\\$30$ / $32$ bins};
 \node[box2,right=of hist] (gate) {Split-mask\\cue gate};
 \node[box2,right=of gate] (bhat) {Bhattacharyya\\$30/70$};
@@ -71,7 +72,8 @@ Each image is rectified into the $1434\times683$ metric frame. Stage~1 fuses ind
 \node[box2,right=of reject] (labels) {Final labels};
 \draw[->] (warp)--(blur); \draw[->] (blur)--(canny); \draw[->] (canny)--(fuse);
 \draw[->] (fuse)--(mask); \draw[->] (mask)--(hough); \draw[->] (hough)--(nms);
-\draw[->] (nms.south) -- ++(0,-0.5) -| (hist.north);
+\draw[->] (nms.south)--(fusion.north);
+\draw[->] (fusion.south) -- ++(0,-0.35) -| (hist.north);
 \draw[->] (hist)--(gate); \draw[->] (gate)--(bhat); \draw[->] (bhat)--(reject); \draw[->] (reject)--(labels);
 \end{tikzpicture}}
 \captionof{figure}{End-to-end pipeline architecture.}
@@ -160,7 +162,7 @@ The fused edge map is passed to the Hough Circle Transform with a minimum centre
 
 For each of the six pocket centres, I examined a $120\times120$ pixel region on the raw lightness channel and thresholded two complementary structures: the dark pocket holes at $L<35$ and the bright metallic brackets at $L>200$. The mid-gray pocket netting is not captured by either threshold, so I also extracted the combined LAB edge map in the same region and dilated it with a $15\times15$ circular kernel. The netting is a dense web of edges, so this dilation fuses it into a solid morphological block. The fused netting block was OR-ed with the L-extreme mask. The local mask was restricted to a $70$-pixel radius around the pocket centre so that a bright ball near a pocket would not be mistaken for a bracket, and the six local masks were combined and dilated with a $13\times13$ circular kernel to cover the immediate pocket lip. A Hough candidate is rejected only when its centre lies on this complete hole--bracket--netting mask. The cushion exclusion margin remains at $22$ pixels. An experiment reducing it to $5$ pixels recovered far-edge balls but reintroduced rail shadows that bypassed the Stage~2 filter, so the larger margin was restored.
 
-Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $40$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $40$ pixels of a retained centre is permanently removed. This threshold sits just below the $43$-pixel physical ball diameter. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls. An attempt to implement a manual 40-pixel Physical Non-Maximum Suppression step revealed that OpenCV's HoughCircles implementation already inherently suppresses intersecting detections via its internal minDist parameter during the accumulator peak-finding phase. An edge-thickness measurement on a $60\times60$ crop around a dark Table~6 ball gave $362$ combined-edge pixels against $353$ skeleton pixels, an average thickness of $1.025$ pixels per skeleton pixel. Zhang--Suen thinning therefore removed only nine pixels and left the ghost responses unchanged. A sweep of the accumulator threshold from $8$ to $22$ showed that ghost detections disappear only at an accumulator threshold of $14$, but the number of true balls then falls from $83$ to $15$. No mathematically clean threshold exists: the residual offset arcs are an intrinsic limitation of the accumulator on dense clusters rather than a tuning error. I also tested a raw-frame detection path: the same LAB edge fusion and Hough search were run on the unwarped photograph, and each detected centre was mapped through the homography $\mathbf{H}$ into metric coordinates before the cushion, pocket, and Stage~2 logic. The best raw configuration (accumulator threshold $14$, minimum separation $30$, radius $18$--$30$) produced $77$ TP, $0$ FP, and $13$ FN, with precision $1.000$, recall $0.856$, F1 $0.922$, but Stage~2 accuracy fell to $66.2\%$. The rectified baseline was retained because the raw path did not recover more edge balls and introduced centre jitter and radius mismatch after projection.
+Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $40$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $40$ pixels of a retained centre is permanently removed. This threshold sits just below the $43$-pixel physical ball diameter. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls. An attempt to implement a manual 40-pixel Physical Non-Maximum Suppression step revealed that OpenCV's HoughCircles implementation already inherently suppresses intersecting detections via its internal minDist parameter during the accumulator peak-finding phase. An edge-thickness measurement on a $60\times60$ crop around a dark Table~6 ball gave $362$ combined-edge pixels against $353$ skeleton pixels, an average thickness of $1.025$ pixels per skeleton pixel. Zhang--Suen thinning therefore removed only nine pixels and left the ghost responses unchanged. A sweep of the accumulator threshold from $8$ to $22$ showed that ghost detections disappear only at an accumulator threshold of $14$, but the number of true balls then falls from $83$ to $15$. No mathematically clean threshold exists: the residual offset arcs are an intrinsic limitation of the accumulator on dense clusters rather than a tuning error. Instead of replacing rectified detection, I use the raw-frame path as a secondary recovery pass. The same LAB edge fusion and Hough search are run on the unwarped photograph with accumulator threshold $14$, minimum separation $30$, and radius $18$--$30$. Each raw centre is mapped through $\mathbf{H}$ into metric coordinates. A projected candidate is appended only when it is farther than $30$ pixels from every rectified detection, after which the combined ensemble passes through the cushion, pocket, split-mask cue gate, and Stage~2 classifier. This recovered three true balls, raising TP from $79$ to $82$ and reducing FN from $11$ to $8$, while false positives stayed at $8$; Stage~1 F1 rose from $0.893$ to $0.911$ and Stage~2 accuracy from $75.9\%$ to $76.8\%$.
 
 Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the top-right pocket of Table~4. The old red circle reaches into the cue ball's neighbourhood, while the green mask covers the dark hole, bright bracket, and netting. The cue ball is therefore spared and is recovered by the final detector.
 
@@ -224,7 +226,7 @@ Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ba
 
 \subsection{Stage 1: Detection Results}
 
-Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket and netting mask removes the pocket structures while sparing nearby balls, and the physical NMS removes intersecting accumulator peaks. Overall precision is $0.908$, recall is $0.878$, and the F1-score is $0.893$.
+Table~\ref{tab:stage1} reports the final Stage~1 metrics. The dynamic pocket and netting mask removes the pocket structures while sparing nearby balls, and the physical NMS removes intersecting accumulator peaks. Overall precision is $0.911$, recall is $0.911$, and the F1-score is $0.911$.
 
 \begin{table}[H]
 \centering
@@ -238,17 +240,17 @@ Table 1 & 13 & 0 & 3 & 1.000 & 0.812 & 0.897 \\
 Table 2 & 15 & 2 & 1 & 0.882 & 0.938 & 0.909 \\
 Table 3 & 16 & 0 & 0 & 1.000 & 1.000 & 1.000 \\
 Table 4 & 14 & 2 & 1 & 0.875 & 0.933 & 0.903 \\
-Table 5 & 11 & 2 & 3 & 0.846 & 0.786 & 0.815 \\
-Table 6 & 10 & 2 & 3 & 0.833 & 0.769 & 0.800 \\
+Table 5 & 13 & 2 & 1 & 0.867 & 0.929 & 0.897 \\
+Table 6 & 11 & 2 & 2 & 0.846 & 0.846 & 0.846 \\
 \midrule
-Overall & 79 & 8 & 11 & 0.908 & 0.878 & 0.893 \\
+Overall & 82 & 8 & 8 & 0.911 & 0.911 & 0.911 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{Stage 2: Recognition Results}
 
-Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $60$ of $79$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $75.9\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.9\%$ Stage~2 recognition accuracy.
+Table~\ref{tab:stage2} reports recognition accuracy for the true-positive detections. Across all six tables, $63$ of $82$ correctly localised balls receive the correct label, giving an overall recognition accuracy of $76.8\%$. Figure~\ref{fig:table4final} shows the final labelled output for Table~4, which combines high Stage~1 recall with $92.9\%$ Stage~2 recognition accuracy.
 
 \begin{table}[H]
 \centering
@@ -262,10 +264,10 @@ Table 1 & 10 & 13 & 0.769 \\
 Table 2 & 10 & 15 & 0.667 \\
 Table 3 & 12 & 16 & 0.750 \\
 Table 4 & 13 & 14 & 0.929 \\
-Table 5 & 8 & 11 & 0.727 \\
-Table 6 & 7 & 10 & 0.700 \\
+Table 5 & 10 & 13 & 0.769 \\
+Table 6 & 8 & 11 & 0.727 \\
 \midrule
-Overall & 60 & 79 & 0.759 \\
+Overall & 63 & 82 & 0.768 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -284,7 +286,7 @@ Overall & 60 & 79 & 0.759 \\
 \includegraphics[width=\linewidth]{table5_final.jpeg}
 \end{wrapfigure}
 
-After restoring the $22$-pixel cushion margin and the split-mask cue gate, Stage~1 yields $79$ true positives, $8$ false positives, and $11$ false negatives; Stage~2 reaches $75.9\%$ recognition accuracy. Three failure modes remain.
+After restoring the $22$-pixel cushion margin, the split-mask cue gate, and ensemble candidate fusion, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Three failure modes remain.
 
 \paragraph{Failure Mode 1: Elliptical Duplicates.}
 Perspective warping stretches edge balls into ellipses. Hough can fit two smaller circles into opposite ends of one oval; the centres are often more than $40$ pixels apart, bypassing both minimum separation and NMS. The orange ball is sometimes reported as both a $5$ and a $13$.
@@ -293,14 +295,14 @@ Perspective warping stretches edge balls into ellipses. Hough can fit two smalle
 A $16$-pixel gate mask could fall entirely inside the white number circles of the $1$ and $9$. A full-radius brightness test then over-corrected and rejected the cue under edge shadows. The final split-mask gate uses the $16$-pixel centre for brightness and whiteness and the full $21$-pixel radius for paint, with centre value above $235$, centre saturation below $75$, and full saturation below $76$. The Highlander rule selects the lowest full saturation; other candidates fall back to their best non-cue histogram match. Stage~2 accuracy is $75.9\%$.
 
 \paragraph{Failure Mode 3: Dense Racks and Boundary Blindspots.}
-Tightly packed balls suffer severe edge merging, so Hough loses the isolated gradients it needs; Watershed segmentation would be required. A $5$-pixel cushion margin recovered far-edge balls but reintroduced rail shadows, so the $22$-pixel margin was restored. Expanding the Hough radius to $17$--$26$ and lowering the accumulator threshold to $7.5$ and $7.0$ recovered no true balls: TP remained $79$, FPs rose to $10$ and $18$, and Stage~2 accuracy fell to $70.9\%$ and $69.6\%$. The original $19$--$24$ radius and threshold $8.0$ were retained. A dedicated rectified-versus-raw comparison made the trade-off explicit: the rectified baseline achieved $79$ TP, $8$ FP, $11$ FN, precision $0.908$, recall $0.878$, F1 $0.893$, and Stage~2 accuracy $75.9\%$, while the best raw-space path achieved $77$ TP, $0$ FP, $13$ FN, precision $1.000$, recall $0.856$, F1 $0.922$, but only $66.2\%$ Stage~2 accuracy. The raw path gained precision by missing more balls and lost recognition accuracy because homography projection introduced centre jitter and radius mismatch; the rectified baseline was therefore kept.
+Tightly packed balls suffer severe edge merging, so Hough loses the isolated gradients it needs; Watershed segmentation would be required. A $5$-pixel cushion margin recovered far-edge balls but reintroduced rail shadows, so the $22$-pixel margin was restored. Expanding the Hough radius to $17$--$26$ and lowering the accumulator threshold to $7.5$ and $7.0$ recovered no true balls: TP remained $79$, FPs rose to $10$ and $18$, and Stage~2 accuracy fell to $70.9\%$ and $69.6\%$. The original $19$--$24$ radius and threshold $8.0$ were retained. A dedicated comparison made the trade-off explicit. Rectified Hough alone produced $79$ TP, $8$ FP, and $11$ FN. Raw Hough alone produced $77$ TP, $0$ FP, and $13$ FN but only $66.2\%$ Stage~2 accuracy because homography projection introduced centre jitter and radius mismatch. Ensemble fusion combined the two pools and appended only raw candidates more than $30$ pixels from every rectified detection, producing $82$ TP, $8$ FP, and $8$ FN. The ensemble therefore recovered three balls without adding false positives and became the final detector.
 
 \section{Discussion}
 
-The final Stage~1 precision is $0.908$, recall $0.878$, and F1 $0.893$; Stage~2 accuracy is $0.759$. Remaining limits are solid/stripe overlap and elliptical Hough responses, motivating spatial stripe detection and Watershed segmentation.
+The final Stage~1 precision is $0.911$, recall $0.911$, and F1 $0.911$; Stage~2 accuracy is $0.768$. Remaining limits are solid/stripe overlap and elliptical Hough responses, motivating spatial stripe detection and Watershed segmentation.
 
 \section{Conclusion}
 
-The pipeline achieves P $0.908$, R $0.878$, F1 $0.893$ and Stage~2 accuracy $0.759$; remaining errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
+The pipeline achieves P $0.911$, R $0.911$, F1 $0.911$ and Stage~2 accuracy $0.768$; remaining errors are elliptical duplicates, rotated-stripe gate ambiguities, and dense-rack merges.
 
 \end{document}

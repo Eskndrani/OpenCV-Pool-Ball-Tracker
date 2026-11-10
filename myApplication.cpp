@@ -617,6 +617,87 @@ void MyApplication()
             filteredCircles.push_back(circle);
         }
 
+        // Secondary raw-frame path: detect on the unwarped image, then project
+        // centres into metric space and recover candidates missed by the
+        // rectified detector.
+        cv::Mat rawLabImage;
+        cv::cvtColor(inputImage, rawLabImage, cv::COLOR_BGR2Lab);
+        std::vector<cv::Mat> rawLabChannels;
+        cv::split(rawLabImage, rawLabChannels);
+
+        cv::Mat rawL;
+        cv::Mat rawA;
+        cv::Mat rawB;
+        cv::GaussianBlur(rawLabChannels[0], rawL, cv::Size(5, 5), 1.2);
+        cv::GaussianBlur(rawLabChannels[1], rawA, cv::Size(5, 5), 1.2);
+        cv::GaussianBlur(rawLabChannels[2], rawB, cv::Size(5, 5), 1.2);
+
+        cv::Mat rawLEdges;
+        cv::Mat rawAEdges;
+        cv::Mat rawBEdges;
+        cv::Canny(rawL, rawLEdges, 45, 95);
+        cv::Canny(rawA, rawAEdges, 35, 85);
+        cv::Canny(rawB, rawBEdges, 35, 85);
+
+        cv::Mat rawEdges;
+        cv::bitwise_or(rawLEdges, rawAEdges, rawEdges);
+        cv::bitwise_or(rawEdges, rawBEdges, rawEdges);
+
+        std::vector<cv::Vec3f> rawCircles;
+        cv::HoughCircles(
+            rawEdges,
+            rawCircles,
+            cv::HOUGH_GRADIENT,
+            1.0,
+            30.0,
+            12.0,
+            14.0,
+            18,
+            30
+        );
+
+        std::vector<cv::Point2f> rawCenters;
+        for (const cv::Vec3f& circle : rawCircles)
+        {
+            rawCenters.emplace_back(circle[0], circle[1]);
+        }
+
+        std::vector<cv::Point2f> projectedCenters;
+        if (!rawCenters.empty())
+        {
+            cv::perspectiveTransform(rawCenters, projectedCenters, perspectiveTransform);
+        }
+
+        for (const cv::Point2f& projected : projectedCenters)
+        {
+            if (projected.x < 22.0F || projected.x > 1434.0F - 22.0F ||
+                projected.y < 22.0F || projected.y > 683.0F - 22.0F)
+            {
+                continue;
+            }
+
+            if (pocketMask.at<uchar>(cvRound(projected.y), cvRound(projected.x)) > 0)
+            {
+                continue;
+            }
+
+            bool alreadyDetected = false;
+            for (const cv::Vec3f& existing : filteredCircles)
+            {
+                const cv::Point2f existingCenter(existing[0], existing[1]);
+                if (cv::norm(projected - existingCenter) <= 30.0)
+                {
+                    alreadyDetected = true;
+                    break;
+                }
+            }
+
+            if (!alreadyDetected)
+            {
+                filteredCircles.emplace_back(projected.x, projected.y, 21.5F);
+            }
+        }
+
         std::vector<cv::Vec3f> recognizedBalls;
         std::vector<int> recognizedLabels;
         recognizedBalls.reserve(filteredCircles.size());
