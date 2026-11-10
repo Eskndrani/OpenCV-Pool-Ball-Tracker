@@ -89,45 +89,15 @@ Each input photograph is first mapped by a planar homography from the four measu
 
 \subsection{Failed green-channel boost and adaptive thresholding}
 
-To solve the problem of missing green balls, I initially hypothesised that isolating and boosting the RGB green channel by a factor of $1.5$, followed by adaptive Gaussian thresholding, would force the balls to pop against the felt. The adaptive threshold used a local block size of $15$ and a constant of $2$. This failed because boosting the green channel equally boosted the green table, and adaptive thresholding amplified the woven texture of the felt into severe noise. Figure~\ref{fig:greenboost} shows the original region and the green-boosted grayscale image, together with the resulting adaptive threshold map. The ball boundaries are washed out while the felt texture dominates the edge map.
+To solve the problem of missing green balls, I initially hypothesised that isolating and boosting the RGB green channel by a factor of $1.5$, followed by adaptive Gaussian thresholding, would force the balls to pop against the felt. The adaptive threshold used a local block size of $15$ and a constant of $2$. This failed because boosting the green channel equally boosted the green table, and adaptive thresholding amplified the woven texture of the felt into severe noise. The original region, green-boosted grayscale image, and adaptive threshold map were inspected together. The ball boundaries are washed out while the felt texture dominates the edge map.
 
-\begin{figure}[H]
-\centering
-\begin{subfigure}[b]{0.44\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_test_green_boost.jpeg}
-\caption{Original region versus green-channel boost.}
-\end{subfigure}
-\hfill
-\begin{subfigure}[b]{0.24\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_test_adaptive_thresh.jpeg}
-\caption{Adaptive Gaussian threshold map: severe felt texture noise.}
-\end{subfigure}
-\caption{The green-channel boost and adaptive-threshold experiment. The boosted image washes out ball features, and the threshold map is dominated by felt texture rather than ball boundaries.}
-\label{fig:greenboost}
-\end{figure}
+
 
 \subsection{Failed HSV and single-channel lightness thresholding}
 
-I then attempted to isolate the felt directly in HSV space with a fixed hue range of $35$--$85$, saturation range $40$--$255$, and value range $40$--$255$. This also failed for the green object balls, particularly balls~6 and~14, because their hue and saturation overlap almost completely with the green felt. Figure~\ref{fig:hsvfailure} shows a $100\times100$ region around the green ball and the resulting binary mask. In the mask, the green ball vanishes into the white felt instead of producing a distinct foreground blob. A single-channel lightness threshold produced the complementary failure: shadows fragmented the ball boundaries and the threshold could not separate dark balls from the table. Both results motivated a multi-channel approach.
+I then attempted to isolate the felt directly in HSV space with a fixed hue range of $35$--$85$, saturation range $40$--$255$, and value range $40$--$255$. This also failed for the green object balls, particularly balls~6 and~14, because their hue and saturation overlap almost completely with the green felt. A $100\times100$ region around the green ball and the resulting binary mask were inspected. In the mask, the green ball vanishes into the white felt instead of producing a distinct foreground blob. A single-channel lightness threshold produced the complementary failure: shadows fragmented the ball boundaries and the threshold could not separate dark balls from the table. Both results motivated a multi-channel approach.
 
-\begin{figure}[H]
-\centering
-\begin{subfigure}[b]{0.24\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_hsv_original.jpeg}
-\caption{Original region around the green ball.}
-\end{subfigure}
-\hfill
-\begin{subfigure}[b]{0.24\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_hsv_mask.jpeg}
-\caption{Fixed HSV threshold: the green ball merges into the felt.}
-\end{subfigure}
-\caption{Visual evidence for the failure of fixed HSV thresholding. The green ball and the green felt are not separable with static hue and saturation limits.}
-\label{fig:hsvfailure}
-\end{figure}
+
 
 \subsection{Successful multi-channel CIELAB edge fusion}
 
@@ -164,14 +134,9 @@ For each of the six pocket centres, I examined a $120\times120$ pixel region on 
 
 Hough detection can occasionally leak intersecting accumulator peaks that describe the same physical ball. After the transform returns its circles, I therefore enforce a strict $40$-pixel physical non-maximum suppression. The circles are traversed in accumulator order; the first centre is retained, and any later centre within $40$ pixels of a retained centre is permanently removed. This threshold sits just below the $43$-pixel physical ball diameter. Since two distinct balls cannot physically occupy the same space, this constraint prevents duplicate detections without discarding genuine neighbouring balls. An attempt to implement a manual 40-pixel Physical Non-Maximum Suppression step revealed that OpenCV's HoughCircles implementation already inherently suppresses intersecting detections via its internal minDist parameter during the accumulator peak-finding phase. An edge-thickness measurement on a $60\times60$ crop around a dark Table~6 ball gave $362$ combined-edge pixels against $353$ skeleton pixels, an average thickness of $1.025$ pixels per skeleton pixel. Zhang--Suen thinning therefore removed only nine pixels and left the ghost responses unchanged. A sweep of the accumulator threshold from $8$ to $22$ showed that ghost detections disappear only at an accumulator threshold of $14$, but the number of true balls then falls from $83$ to $15$. No mathematically clean threshold exists: the residual offset arcs are an intrinsic limitation of the accumulator on dense clusters rather than a tuning error. Instead of replacing rectified detection, I use the raw-frame path as a secondary recovery pass. The same LAB edge fusion and Hough search are run on the unwarped photograph with accumulator threshold $14$, minimum separation $30$, and radius $18$--$30$. Each raw centre is mapped through $\mathbf{H}$ into metric coordinates. A projected candidate is appended only when it is farther than $30$ pixels from every rectified detection, after which the combined ensemble passes through the cushion, pocket, split-mask cue gate, and Stage~2 classifier. This recovered three true balls, raising TP from $79$ to $82$ and reducing FN from $11$ to $8$, while false positives stayed at $8$; Stage~1 F1 rose from $0.893$ to $0.911$ and Stage~2 accuracy from $75.9\%$ to $76.8\%$.
 
-Figure~\ref{fig:pocketmask} compares the old blind zone with the new mask at the top-right pocket of Table~4. The old red circle reaches into the cue ball's neighbourhood, while the green mask covers the dark hole, bright bracket, and netting. The cue ball is therefore spared and is recovered by the final detector.
+The dynamic mask covers the dark hole, bright bracket, and netting, while the cue ball is spared and recovered by the final detector.
 
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.42\textwidth]{report_pocket_mask_compare.jpeg}
-\caption{Top-right pocket of Table~4. The dashed red circle is the old blind $95$-pixel exclusion; the green region is the dynamic L-channel and edge-density netting mask. The cue ball is no longer removed.}
-\label{fig:pocketmask}
-\end{figure}
+
 
 \section{Stage 2: Ball Recognition and Classification}
 
@@ -194,33 +159,9 @@ A detection whose weighted distance exceeds $0.55$ is rejected as a non-ball or 
 
 Stage~1 occasionally returned circular shadow artifacts along the rails. Shadows lack the sharp saturation peaks of resin pool balls, so their histograms lie far from every reference. Tightening the rejection threshold to $0.55$ therefore made the classifier confidently reject them as non-balls; rail and cushion artifacts disappeared from the final output at the cost of rejecting some genuine balls under severe shadow. The cue-ball analysis exposed why a pure distance threshold is insufficient. The cue histogram is heavily influenced by green felt reflections, so its best Bhattacharyya distance reached $0.636$ and overlapped with false positives. The cue gate originally used a reduced $16$-pixel mask, which could fall entirely inside the white number circle of the $1$-ball or $9$-ball and hijack those balls. I therefore split the gate into two masks: a $16$-pixel centre mask evaluates core brightness and whiteness, while a full-radius mask (about $21$ pixels) evaluates the overall paint. A true cue ball is bright in the centre and low in full-mask saturation; a striped ball has a white centre but coloured bands that raise the full-mask saturation. Initial split thresholds of centre value above $200$, centre saturation below $75$, and full saturation below $100$ still admitted the purple $12$ stripe, whose centre value was only $221$--$231$ and whose full saturation was about $49$. I therefore tightened the gate to centre value above $235$ and full saturation below $76$, which excludes the purple stripe and the $9$-ball while retaining the cue ball (centre value at least $238$, full saturation at most $73$). The Highlander rule then selects the surviving candidate with the lowest full-mask saturation; every other gate candidate falls back to its best non-cue histogram match.
 
-Figure~\ref{fig:sathist} compares the solid blue ball~2 with the striped blue ball~10. The solid ball peaks at high saturation, whereas the striped ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
+The solid blue ball peaks at high saturation, whereas the striped blue ball has a pronounced low-saturation peak caused by its white stripe. This shift is independent of the ball's physical rotation and provides a mathematically robust feature for distinguishing stripes from solids.
 
-\begin{figure}[H]
-\centering
-\begin{subfigure}[b]{0.18\textwidth}
-\centering
-\includegraphics[width=\linewidth]{crop_ball2.jpeg}
-\caption{Ball~2 crop.}
-\end{subfigure}\hfill
-\begin{subfigure}[b]{0.18\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_hist_solid.jpeg}
-\caption{Solid histogram.}
-\end{subfigure}\hfill
-\begin{subfigure}[b]{0.18\textwidth}
-\centering
-\includegraphics[width=\linewidth]{crop_ball10.jpeg}
-\caption{Ball~10 crop.}
-\end{subfigure}\hfill
-\begin{subfigure}[b]{0.18\textwidth}
-\centering
-\includegraphics[width=\linewidth]{report_hist_stripe.jpeg}
-\caption{Striped histogram.}
-\end{subfigure}
-\caption{Solid versus striped blue balls and their saturation histograms. The white stripe shifts the striped ball's distribution strongly toward the low-saturation end, motivating the $70\%$ saturation weighting.}
-\label{fig:sathist}
-\end{figure}
+
 
 \section{Results and Error Analysis}
 
@@ -274,30 +215,30 @@ Overall & 63 & 82 & 0.768 \\
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.38\textwidth]{report_table4_final.jpeg}
+\includegraphics[width=0.95\linewidth]{report_table4_final.jpeg}
 \caption{Final labelled output for Table~4 after dynamic pocket masking and Stage~2 classification; Stage~2 recognition accuracy is $92.9\%$.}
 \label{fig:table4final}
 \end{figure}
 
 \subsection{Error Analysis}
 
-\begin{wrapfigure}{r}{0.16\textwidth}
+After restoring the $22$-pixel cushion margin, applying the split-mask cue gate, and fusing rectified with raw-frame candidates, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Figure~\ref{fig:table6failure} shows the Table~6 output used to inspect the remaining failures.
+
+\begin{figure}[H]
 \centering
-\includegraphics[width=\linewidth]{table5_final.jpeg}
-\caption{\footnotesize Table~5 final output.}
-\label{fig:table5failure}
-\end{wrapfigure}
+\includegraphics[width=0.85\linewidth]{table6_final.jpeg}
+\caption{Final labelled output for Table~6, showing the elliptical, cue-gate, and dense-rack failure modes discussed below.}
+\label{fig:table6failure}
+\end{figure}
 
-After restoring the $22$-pixel cushion margin, the split-mask cue gate, and ensemble candidate fusion, Stage~1 yields $82$ true positives, $8$ false positives, and $8$ false negatives; Stage~2 reaches $76.8\%$ recognition accuracy. Three failure modes remain. Figure~\ref{fig:table5failure} shows the corresponding Table~5 output.
+\paragraph{Failure Mode 1: Elliptical Perspective Distortion.}
+Planar homography rectifies the table plane, but balls near the perimeter are viewed obliquely and become ellipses in the metric frame. A circular Hough accumulator assumes a rigid circle, so its votes are smeared across an arc rather than concentrated at one centre. The detector may then fit two smaller circles into opposite ends of a single elongated ball, or it may miss the ball entirely if no peak reaches the voting threshold. These dual detections are often more than $40$ pixels apart, so they bypass both minimum separation and physical NMS. The orange striped ball, for example, is sometimes reported as both a $5$ and a $13$.
 
-\paragraph{Failure Mode 1: Elliptical Duplicates.}
-Perspective warping stretches edge balls into ellipses. Hough can fit two smaller circles into opposite ends of one oval; the centres are often more than $40$ pixels apart, bypassing both minimum separation and NMS. The orange ball is sometimes reported as both a $5$ and a $13$.
+\paragraph{Failure Mode 2: Cue Gate and Rotation Variance.}
+The split-mask cue gate uses centre brightness and whiteness on the $16$-pixel core, together with a full-$21$-pixel saturation limit, specifically to prevent a ``bullseye'' striped ball such as the $9$ or $14$ from hijacking the cue label when its white number circle faces the camera. The centre values are required to exceed $235$, the centre saturation to remain below $75$, and the full saturation to remain below $76$; the Highlander rule then keeps only the candidate with the lowest full saturation as the cue. This resolves the common rotation trap, but extreme shadow or severe specular reflection can still push a genuine cue outside the brightness or variance limits, or push a highly reflective stripe inside them.
 
-\paragraph{Failure Mode 2: Cue Gate Rotation Trap.}
-A $16$-pixel gate mask could fall entirely inside the white number circles of the $1$ and $9$. A full-radius brightness test then over-corrected and rejected the cue under edge shadows. The final split-mask gate uses the $16$-pixel centre for brightness and whiteness and the full $21$-pixel radius for paint, with centre value above $235$, centre saturation below $75$, and full saturation below $76$. The Highlander rule selects the lowest full saturation; other candidates fall back to their best non-cue histogram match. Stage~2 accuracy is $75.9\%$.
-
-\paragraph{Failure Mode 3: Dense Racks and Boundary Blindspots.}
-Tightly packed balls suffer severe edge merging, so Hough loses the isolated gradients it needs; Watershed segmentation would be required. A $5$-pixel cushion margin recovered far-edge balls but reintroduced rail shadows, so the $22$-pixel margin was restored. Expanding the Hough radius to $17$--$26$ and lowering the accumulator threshold to $7.5$ and $7.0$ recovered no true balls: TP remained $79$, FPs rose to $10$ and $18$, and Stage~2 accuracy fell to $70.9\%$ and $69.6\%$. The original $19$--$24$ radius and threshold $8.0$ were retained. A dedicated comparison made the trade-off explicit. Rectified Hough alone produced $79$ TP, $8$ FP, and $11$ FN. Raw Hough alone produced $77$ TP, $0$ FP, and $13$ FN but only $66.2\%$ Stage~2 accuracy because homography projection introduced centre jitter and radius mismatch. Ensemble fusion combined the two pools and appended only raw candidates more than $30$ pixels from every rectified detection, producing $82$ TP, $8$ FP, and $8$ FN. The ensemble therefore recovered three balls without adding false positives and became the final detector.
+\paragraph{Failure Mode 3: Dense-Rack Edge Merging.}
+Balls touching inside the triangular rack break the continuous circular Canny gradients that Hough requires. The fused edge map no longer contains isolated circular evidence, so accumulator peaks remain below the voting threshold at $param2=8.0$ and the corresponding balls are missed. Increasing the radius range or lowering the accumulator threshold recovered no additional true balls in the tolerance experiment and only increased false positives. The raw-frame recovery pass recovers some perimeter balls because their projections remain more circular before rectification, but it cannot separate the tightly packed rack. A morphological segmentation technique such as Watershed, which uses distance-transform minima to split touching objects, is the appropriate advanced alternative.
 
 \section{Discussion}
 
@@ -309,6 +250,12 @@ The ensemble achieves P $0.911$, R $0.911$, F1 $0.911$ and Stage~2 accuracy $0.7
 
 \section*{AI Usage Statement}
 
-{\small Generative AI tools were utilized during this project strictly for revising the text of the final report, optimizing LaTeX formatting and TikZ diagram rendering, and brainstorming technical solutions (such as Non-Maximum Suppression parameters and LAB color space feature extractions). All empirical evaluations, code implementations, parameter tuning, and experimental validations were performed directly by the author.}\normalsize
+{\footnotesize Generative AI tools (Google Gemini) assisted with LaTeX formatting, TikZ architecture rendering, textual revisions, and standalone C++ diagnostic scripts for parameter sweeps.
+
+\textbf{Example 1: Diagnostic Script Generation.} \textit{Prompt:} ``Write a standalone diagnostic script to sweep Hough \texttt{param2} from 6.0 to 18.0 and measure its impact on edge-thinned LAB maps versus raw Canny maps.'' \textit{Response:} ``Generated a C++ benchmark function iterating through \texttt{param2}, logging TP/FP counts to \texttt{stage2\_feature\_analysis.csv}.''
+
+\textbf{Example 2: Feature Exploration and Gate Suggestion.} \textit{Prompt:} ``The 1D Hue/Sat histogram classifies the 9-ball as the cue ball when its white number faces the camera. How can we separate them mathematically?'' \textit{Response:} ``Suggested a dual-mask saturation/value check (Split-Mask Cue Gate) comparing the 16-pixel centre core against the 21-pixel full radius to capture edge paint while ignoring felt shadows.''
+
+All core algorithmic implementations, experimental designs, parameter selections, and final data verification were conducted directly by the author.}\normalsize
 
 \end{document}
